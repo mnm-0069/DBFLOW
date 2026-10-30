@@ -6,15 +6,16 @@ type DraftValue = { value: string; isNull: boolean; included: boolean };
 const api = 'http://localhost:4000/api/connections';
 const toText = (value: unknown) => value === null || value === undefined ? '' : typeof value === 'string' ? value : value instanceof Date ? value.toISOString() : typeof value === 'object' ? JSON.stringify(value) : String(value);
 
-export function EditRecordDialog({ connectionId, schema, table, row, columns, onClose, onSaved }: {
+export function EditRecordDialog({ connectionId, schema, table, row, columns, onClose, onSaved, onRefresh }: {
   connectionId: string; schema: string; table: string; row: Record<string, unknown>; columns: Column[];
-  onClose: () => void; onSaved: () => Promise<void>;
+  onClose: () => void; onSaved: () => Promise<void>; onRefresh: () => Promise<unknown | null>;
 }) {
   const keys = columns.filter((column) => column.key === 'pk' || column.key === 'pk-fk');
   const editable = columns.filter((column) => column.key !== 'pk' && column.key !== 'pk-fk' && !column.generated);
   const [draft, setDraft] = useState<Record<string, DraftValue>>(() => Object.fromEntries(editable.map((column) => [column.name, { value: toText(row[column.name]), isNull: row[column.name] === null, included: false }])));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [conflict, setConflict] = useState(false);
   const update = (name: string, patch: Partial<DraftValue>) => setDraft((current) => ({ ...current, [name]: { ...current[name]!, ...patch } }));
   const save = async () => {
     const changedColumns = Object.keys(draft).filter((name) => draft[name]!.included);
@@ -26,10 +27,17 @@ export function EditRecordDialog({ connectionId, schema, table, row, columns, on
       const primaryKey = Object.fromEntries(keys.map((column) => [column.name, row[column.name]]));
       const response = await fetch(`${api}/records/update`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ connectionId, schema, table, primaryKey, originalValues, changes }) });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? 'The database could not save this row.');
+      if (!response.ok) { setConflict(response.status === 409); throw new Error(payload.error ?? 'The database could not save this row.'); }
       await onSaved(); onClose();
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save the selected row.'); }
     finally { setBusy(false); }
+  };
+  const refreshAfterConflict = async () => {
+    setBusy(true);
+    try {
+      if (await onRefresh()) onClose();
+      else setError('The row could not be refreshed. Close this dialog and use Retry records to reload the table.');
+    } finally { setBusy(false); }
   };
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}><section className="connection-modal edit-record-modal" role="dialog" aria-modal="true" aria-labelledby="edit-record-title" aria-describedby="edit-record-description">
     <div className="modal-heading"><div className="modal-icon"><Check size={19}/></div><button className="icon-button" aria-label="Close row editor" onClick={onClose} disabled={busy}><X size={17}/></button></div>
@@ -41,6 +49,6 @@ export function EditRecordDialog({ connectionId, schema, table, row, columns, on
       {column.nullable && <label className="edit-field-include"><input type="checkbox" aria-label={`Set ${column.name} to NULL`} checked={Boolean(draft[column.name]?.isNull)} disabled={busy} onChange={(event) => update(column.name, { isNull: event.target.checked, included: true })}/> Set NULL</label>}
     </div>)}{editable.length === 0 && <div className="empty-edit-fields">This table has no editable non-key columns.</div>}</div>
     {error && <div className="connection-result error" role="alert">{error}</div>}
-    <div className="create-table-actions"><button className="button button-quiet" onClick={onClose} disabled={busy}>Cancel</button><button className="button button-primary" onClick={() => void save()} disabled={busy || editable.length === 0}>{busy ? 'Saving…' : 'Save changes'} <Check size={15}/></button></div>
+    <div className="create-table-actions">{conflict && <button className="button button-quiet" onClick={() => void refreshAfterConflict()} disabled={busy}>{busy ? 'Refreshing…' : 'Refresh row'}</button>}<button className="button button-quiet" onClick={onClose} disabled={busy}>Cancel</button><button className="button button-primary" onClick={() => void save()} disabled={busy || editable.length === 0}>{busy ? 'Saving…' : 'Save changes'} <Check size={15}/></button></div>
   </section></div>;
 }

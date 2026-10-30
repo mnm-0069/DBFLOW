@@ -47,12 +47,16 @@ test('assembles PostgreSQL tables with readable types, primary keys, and foreign
       table_schema: 'public', table_name: 'memberships', column_name: 'user_id',
       referenced_schema: 'public', referenced_table: 'users', referenced_column: 'id',
     }],
+    [
+      { table_schema: 'public', table_name: 'users', column_name: 'name', is_unique: true, is_referenceable: true },
+      { table_schema: 'public', table_name: 'memberships', column_name: 'user_id', is_unique: false, is_referenceable: false },
+    ],
   );
 
   assert.deepEqual(tables, [
     {
       schema: 'public', name: 'users',
-      columns: [{ name: 'id', type: 'uuid', key: 'pk' }, { name: 'name', type: 'varchar(120)' }],
+      columns: [{ name: 'id', type: 'uuid', key: 'pk' }, { name: 'name', type: 'varchar(120)', unique: true }],
       foreignKeys: [],
     },
     {
@@ -68,7 +72,7 @@ test('assembles PostgreSQL tables with readable types, primary keys, and foreign
     },
     {
       schema: 'public', name: 'memberships',
-      columns: [{ name: 'user_id', type: 'uuid', key: 'pk-fk' }],
+      columns: [{ name: 'user_id', type: 'uuid', key: 'pk-fk', referenceable: false }],
       foreignKeys: [{ column: 'user_id', referencedSchema: 'public', referencedTable: 'users', referencedColumn: 'id' }],
     },
   ]);
@@ -76,6 +80,21 @@ test('assembles PostgreSQL tables with readable types, primary keys, and foreign
 
 test('keeps introspection results empty when the account can see no tables', () => {
   assert.deepEqual(assemblePostgresSchema([], [], []), []);
+});
+
+test('assembles ordered primary and unique key groups for composite references', () => {
+  const [table] = assemblePostgresSchema([
+    column('scoped', 'tenant_id', 'integer'), column('scoped', 'record_id', 'integer'), column('scoped', 'slug', 'text'),
+  ], [], [], [], [
+    { table_schema: 'public', table_name: 'scoped', constraint_name: 'scoped_pkey', kind: 'primary', column_name: 'tenant_id', position: 1 },
+    { table_schema: 'public', table_name: 'scoped', constraint_name: 'scoped_pkey', kind: 'primary', column_name: 'record_id', position: 2 },
+    { table_schema: 'public', table_name: 'scoped', constraint_name: 'scoped_slug_key', kind: 'unique', column_name: 'tenant_id', position: 1 },
+    { table_schema: 'public', table_name: 'scoped', constraint_name: 'scoped_slug_key', kind: 'unique', column_name: 'slug', position: 2 },
+  ]);
+  assert.deepEqual(table?.keyGroups, [
+    { kind: 'primary', columns: ['tenant_id', 'record_id'] },
+    { kind: 'unique', columns: ['tenant_id', 'slug'] },
+  ]);
 });
 
 test('marks generated and nullable PostgreSQL columns for safe row editing', () => {

@@ -10,6 +10,8 @@
     "db:up": "docker compose up -d postgres",
     "db:stop": "docker compose stop postgres",
     "db:logs": "docker compose logs -f postgres",
+    "test:integration": "npm --workspace @idp/api run test:integration",
+    "test:e2e": "npm --workspace @idp/web run test:e2e",
     "build": "npm --workspace @idp/web run build && npm --workspace @idp/api run build",
     "typecheck": "npm --workspace @idp/web run typecheck && npm --workspace @idp/api run typecheck"
   },

@@ -42,8 +42,8 @@ The project is being built around a simple principle:
 | Database connections | Connect to PostgreSQL or MySQL through a local API session. |
 | Schema canvas | Inspect visible tables, columns, primary keys, and foreign-key relationships. |
 | Data explorer | Switch between connected tables, browse records in pages of up to 100 rows, sort across a table, search all rows and columns, edit eligible scalar values, and insert or delete rows through reviewed flows. |
-| Reviewed schema changes | Draft a table or one supported `ADD COLUMN` change, inspect the generated SQL, then explicitly confirm execution. |
-| SQL workspace | Run one read-only `SELECT` or read-only CTE, with bounded results. |
+| Reviewed schema changes | Add PostgreSQL columns one at a time; choose keys, identities, defaults, value rules, single-column relationships, composite foreign keys, and composite unique rules from guided controls. PostgreSQL validates the exact generated DDL inside a rolled-back transaction before SQL review. MySQL currently supports a narrower type set. |
+| SQL workspace | Run one read-only `SELECT` or read-only CTE, with bounded results; reuse or clear up to 15 recent queries in the current browser tab. |
 | Demo mode | Explore sample records and results without sending editor text to a database. |
 
 **This is an early-stage project, and its current limits are part of the design story.** General-purpose SQL, arbitrary DDL, bulk/destructive data changes, persistent connection profiles, and production accounts are not implemented. Row insertion and deletion are explicit single-row operations with review and confirmation; delete requires a primary key and verifies that the row has not changed. See [Product and architecture](docs/PRODUCT_AND_ARCHITECTURE.md) for the full scope.
@@ -118,11 +118,11 @@ These are useful guardrails for this prototype, not a claim of production securi
 
 ## Product direction
 
-The next stage is to make the core loop dependable before broadening the feature set:
+The PostgreSQL workflow is the current focus. Guided table creation covers common PostgreSQL types, identity columns, composite primary and unique keys, defaults, validation checks, and single- and multi-column foreign-key actions. We are expanding advanced PostgreSQL constraint patterns and real-database edge-case coverage before pursuing MySQL parity:
 
-1. Improve the live data workflow with stable server-side filtering and focused coverage for connection errors, reviewed changes, schema refresh failures, and edit conflicts.
-2. Expand repeatable database-backed verification in an explicitly isolated test database, including MySQL behavior.
-3. Build learning and analytics experiences on top of the reliable schema-and-data foundation.
+1. Exercise more PostgreSQL types and constraints through the isolated integration database.
+2. Expand relationship design with self-referencing composite keys, match modes, deferrable constraints, and additional PostgreSQL constraint patterns.
+3. Return to MySQL parity and CI database services after PostgreSQL workflows are solid.
 
 These are areas of exploration, not promises that every item is already implemented. The detailed decisions and boundaries are documented in [Product and architecture](docs/PRODUCT_AND_ARCHITECTURE.md).
 
@@ -143,7 +143,9 @@ npm run test --workspace @idp/api
 npm run build
 ```
 
-GitHub Actions runs these checks on pushes to `main` and on pull requests.
+For the PostgreSQL workflow integration check and manual recovery checklist, see [Testing DBFLOW](docs/TESTING.md). The integration check only runs against a dedicated database named with the `_test` suffix.
+
+GitHub Actions runs typecheck, API unit tests, PostgreSQL integration workflows, browser workflow tests, and the production build on pushes to `main` and on pull requests. The integration check uses an isolated PostgreSQL 18.6 service and a dedicated `_test` database.
 
 ---
 

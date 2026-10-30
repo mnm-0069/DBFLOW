@@ -9,3 +9,10 @@ coverage/
 *.tsbuildinfo
 .vite/
 .dist/
+.playwright-cli/
+playwright-report/
+test-results/
+
+# Local analysis and personal knowledge-base artifacts
+/graphify-out/
+/obsidian_knowledge_base/

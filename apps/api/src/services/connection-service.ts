@@ -12,12 +12,15 @@ export type ConnectionInput = {
 export type PostgresSchemaTable = {
   schema: string;
   name: string;
-  columns: Array<{ name: string; type: string; key?: 'pk' | 'fk' | 'pk-fk'; generated?: boolean; identity?: boolean; hasDefault?: boolean; nullable?: boolean }>;
+  columns: Array<{ name: string; type: string; key?: 'pk' | 'fk' | 'pk-fk'; unique?: boolean; referenceable?: boolean; generated?: boolean; identity?: boolean; hasDefault?: boolean; nullable?: boolean }>;
+  keyGroups?: Array<{ kind: 'primary' | 'unique'; columns: string[] }>;
   foreignKeys: Array<{
     column: string;
     referencedSchema: string;
     referencedTable: string;
     referencedColumn: string;
+    onDelete?: string;
+    onUpdate?: string;
   }>;
 };
 
@@ -31,15 +34,20 @@ type ColumnMetadataRow = {
   has_default?: boolean;
 };
 type PrimaryKeyMetadataRow = { table_schema: string; table_name: string; column_name: string };
+type UniqueKeyMetadataRow = { table_schema: string; table_name: string; column_name: string; is_unique: boolean; is_referenceable: boolean };
+type KeyGroupMetadataRow = { table_schema: string; table_name: string; constraint_name: string; kind: 'primary' | 'unique'; column_name: string; position: number };
 type ForeignKeyMetadataRow = {
   table_schema: string; table_name: string; column_name: string;
   referenced_schema: string; referenced_table: string; referenced_column: string;
+  on_delete?: string; on_update?: string;
 };
 
 export function assemblePostgresSchema(
   columnRows: ColumnMetadataRow[],
   primaryKeyRows: PrimaryKeyMetadataRow[],
   foreignKeyRows: ForeignKeyMetadataRow[],
+  uniqueKeyRows: UniqueKeyMetadataRow[] = [],
+  keyGroupRows: KeyGroupMetadataRow[] = [],
 ): PostgresSchemaTable[] {
   const tables = new Map<string, PostgresSchemaTable>();
   const tableKey = (schema: string, name: string) => JSON.stringify([schema, name]);
@@ -69,6 +77,21 @@ export function assemblePostgresSchema(
     const column = tables.get(tableKey(row.table_schema, row.table_name))?.columns.find((item) => item.name === row.column_name);
     if (column) column.key = 'pk';
   }
+  for (const row of uniqueKeyRows) {
+    const column = tables.get(tableKey(row.table_schema, row.table_name))?.columns.find((item) => item.name === row.column_name);
+    if (column && row.is_unique) column.unique = true;
+    if (column && !row.is_referenceable && !column.unique) column.referenceable = false;
+  }
+  const groups = new Map<string, { table: PostgresSchemaTable; kind: 'primary' | 'unique'; columns: string[] }>();
+  for (const row of keyGroupRows) {
+    const table = tables.get(tableKey(row.table_schema, row.table_name));
+    if (!table) continue;
+    const key = JSON.stringify([row.table_schema, row.table_name, row.constraint_name]);
+    const group = groups.get(key) ?? { table, kind: row.kind, columns: [] };
+    group.columns.push(row.column_name);
+    groups.set(key, group);
+  }
+  for (const group of groups.values()) (group.table.keyGroups ??= []).push({ kind: group.kind, columns: group.columns });
   for (const row of foreignKeyRows) {
     const table = tables.get(tableKey(row.table_schema, row.table_name));
     const column = table?.columns.find((item) => item.name === row.column_name);
@@ -78,6 +101,8 @@ export function assemblePostgresSchema(
       referencedSchema: row.referenced_schema,
       referencedTable: row.referenced_table,
       referencedColumn: row.referenced_column,
+      ...(row.on_delete ? { onDelete: row.on_delete } : {}),
+      ...(row.on_update ? { onUpdate: row.on_update } : {}),
     });
   }
   return [...tables.values()];
@@ -403,8 +428,7 @@ export async function introspectPostgresSchema(session: PostgresSession) {
     const versionNumber = Number(version.rows[0]?.server_version_num);
     const generatedColumn = versionNumber >= 120000 ? 'c.is_generated' : "'NEVER'::text AS is_generated";
     const identityColumn = versionNumber >= 100000 ? 'c.is_identity' : "'NO'::text AS is_identity";
-    const [columnResult, primaryKeyResult, foreignKeyResult] = await Promise.all([
-      client.query<ColumnMetadataRow>(`
+    const columnResult = await client.query<ColumnMetadataRow>(`
         SELECT c.table_schema, c.table_name, c.column_name, c.data_type, c.udt_schema, c.udt_name,
                c.character_maximum_length, c.numeric_precision, c.numeric_scale, ${generatedColumn}, ${identityColumn}, c.column_default IS NOT NULL AS has_default, c.is_nullable
         FROM information_schema.columns c
@@ -415,8 +439,8 @@ export async function introspectPostgresSchema(session: PostgresSession) {
           AND left(c.table_schema, 3) <> 'pg_'
         ORDER BY c.table_schema, c.table_name, c.ordinal_position
         LIMIT 10001
-      `),
-      client.query<PrimaryKeyMetadataRow>(`
+      `);
+    const primaryKeyResult = await client.query<PrimaryKeyMetadataRow>(`
         SELECT tc.table_schema, tc.table_name, kcu.column_name
         FROM information_schema.table_constraints tc
         JOIN information_schema.key_column_usage kcu
@@ -429,14 +453,46 @@ export async function introspectPostgresSchema(session: PostgresSession) {
           AND tc.table_schema NOT IN ('information_schema', 'pg_catalog')
           AND left(tc.table_schema, 3) <> 'pg_'
         LIMIT 10001
-      `),
-      client.query<ForeignKeyMetadataRow>(`
+      `);
+    const uniqueKeyResult = await client.query<UniqueKeyMetadataRow>(`
+        SELECT n.nspname AS table_schema, t.relname AS table_name, a.attname AS column_name,
+               bool_or(con.contype = 'u' AND cardinality(con.conkey) = 1) AS is_unique,
+               bool_or(cardinality(con.conkey) = 1) AS is_referenceable
+        FROM pg_catalog.pg_constraint con
+        JOIN pg_catalog.pg_class t ON t.oid = con.conrelid
+        JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
+        CROSS JOIN LATERAL unnest(con.conkey) AS member(attnum)
+        JOIN pg_catalog.pg_attribute a ON a.attrelid = t.oid AND a.attnum = member.attnum
+        WHERE con.contype IN ('p', 'u')
+          AND n.nspname NOT IN ('information_schema', 'pg_catalog')
+          AND left(n.nspname, 3) <> 'pg_'
+        GROUP BY n.nspname, t.relname, a.attname
+        LIMIT 10001
+      `);
+    const keyGroupResult = await client.query<KeyGroupMetadataRow>(`
+        SELECT n.nspname AS table_schema, t.relname AS table_name, con.conname AS constraint_name,
+               CASE con.contype WHEN 'p' THEN 'primary' ELSE 'unique' END AS kind,
+               a.attname AS column_name, member.position::int AS position
+        FROM pg_catalog.pg_constraint con
+        JOIN pg_catalog.pg_class t ON t.oid = con.conrelid
+        JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
+        CROSS JOIN LATERAL unnest(con.conkey) WITH ORDINALITY AS member(attnum, position)
+        JOIN pg_catalog.pg_attribute a ON a.attrelid = t.oid AND a.attnum = member.attnum
+        WHERE con.contype IN ('p', 'u')
+          AND n.nspname NOT IN ('information_schema', 'pg_catalog')
+          AND left(n.nspname, 3) <> 'pg_'
+        ORDER BY n.nspname, t.relname, con.conname, member.position
+        LIMIT 10001
+      `);
+    const foreignKeyResult = await client.query<ForeignKeyMetadataRow>(`
         SELECT source_ns.nspname AS table_schema,
                source_table.relname AS table_name,
                source_column.attname AS column_name,
                target_ns.nspname AS referenced_schema,
                target_table.relname AS referenced_table,
-               target_column.attname AS referenced_column
+               target_column.attname AS referenced_column,
+               CASE constraint_row.confdeltype WHEN 'a' THEN 'NO ACTION' WHEN 'r' THEN 'RESTRICT' WHEN 'c' THEN 'CASCADE' WHEN 'n' THEN 'SET NULL' WHEN 'd' THEN 'SET DEFAULT' END AS on_delete,
+               CASE constraint_row.confupdtype WHEN 'a' THEN 'NO ACTION' WHEN 'r' THEN 'RESTRICT' WHEN 'c' THEN 'CASCADE' WHEN 'n' THEN 'SET NULL' WHEN 'd' THEN 'SET DEFAULT' END AS on_update
         FROM pg_catalog.pg_constraint constraint_row
         JOIN pg_catalog.pg_class source_table ON source_table.oid = constraint_row.conrelid
         JOIN pg_catalog.pg_namespace source_ns ON source_ns.oid = source_table.relnamespace
@@ -459,10 +515,9 @@ export async function introspectPostgresSchema(session: PostgresSession) {
           AND left(source_ns.nspname, 3) <> 'pg_'
         ORDER BY source_ns.nspname, source_table.relname, constraint_row.conname, key_pair.position
         LIMIT 10001
-      `),
-    ]);
+      `);
 
-    if (columnResult.rows.length > 10000 || primaryKeyResult.rows.length > 10000 || foreignKeyResult.rows.length > 10000) {
+    if (columnResult.rows.length > 10000 || primaryKeyResult.rows.length > 10000 || uniqueKeyResult.rows.length > 10000 || keyGroupResult.rows.length > 10000 || foreignKeyResult.rows.length > 10000) {
       throw new Error('The database schema exceeds the current introspection limit.');
     }
 
@@ -470,7 +525,7 @@ export async function introspectPostgresSchema(session: PostgresSession) {
       engine: 'postgres' as const,
       database: session.database,
       introspectedAt: new Date().toISOString(),
-      tables: assemblePostgresSchema(columnResult.rows, primaryKeyResult.rows, foreignKeyResult.rows),
+      tables: assemblePostgresSchema(columnResult.rows, primaryKeyResult.rows, foreignKeyResult.rows, uniqueKeyResult.rows, keyGroupResult.rows),
     };
   } finally {
     client.release();

@@ -15,7 +15,7 @@ import {
   ReadOnlyQueryValidationError,
   testDatabaseConnection,
 } from '../services/connection-service.js';
-import { executeAddColumn, executeCreateTable, previewAddColumn, previewCreateTable, SchemaOperationError, type CreateTableColumnDraft } from '../services/schema-service.js';
+import { executeAddColumn, executeCreateTable, executeDropTable, executeForeignKey, executeSetNullableColumn, previewAddColumn, previewCreateTable, previewDropTable, previewForeignKey, previewSetNullableColumn, SchemaOperationError, type CreateTableColumnDraft, type ForeignKeyDraft } from '../services/schema-service.js';
 import { DatabaseHostValidationError } from '../services/database-host.js';
 import { RecordUpdateError, updateDatabaseRecord } from '../services/record-update-service.js';
 import { executeRecordDelete, executeRecordInsert, previewRecordDelete, previewRecordInsert, RecordMutationError } from '../services/record-mutation-service.js';
@@ -51,18 +51,34 @@ connectionsRouter.post('/open', async (req, res, next) => {
 });
 
 const sessionSchema = z.object({ connectionId: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
+const createTableDefaultSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('literal'), value: z.string().max(10_000) }).strict(),
+  z.object({ kind: z.literal('current_timestamp') }).strict(),
+  z.object({ kind: z.literal('current_date') }).strict(),
+  z.object({ kind: z.literal('gen_random_uuid') }).strict(),
+]);
+const createTableReferenceSchema = z.object({
+  schema: z.string().max(128), table: z.string().max(128), column: z.string().max(128),
+  onDelete: z.enum(['no action', 'restrict', 'cascade', 'set null', 'set default']),
+  onUpdate: z.enum(['no action', 'restrict', 'cascade', 'set null', 'set default']),
+}).strict();
 const createTableColumnSchema = z.object({
   name: z.string().max(128),
-  type: z.enum(['integer', 'bigint', 'varchar', 'text', 'boolean', 'timestamp', 'decimal']),
+  type: z.enum(['smallint', 'integer', 'bigint', 'varchar', 'text', 'boolean', 'timestamp', 'timestamptz', 'date', 'time', 'timetz', 'decimal', 'real', 'double_precision', 'uuid', 'jsonb', 'bytea']),
   nullable: z.boolean(),
   primaryKey: z.boolean(),
+  unique: z.boolean().optional(),
+  identity: z.enum(['always', 'by-default']).optional(),
+  default: createTableDefaultSchema.optional(),
+  reference: createTableReferenceSchema.optional(),
+  checks: z.object({ minimum: z.string().max(128).optional(), maximum: z.string().max(128).optional(), minLength: z.number().int().optional(), maxLength: z.number().int().optional(), allowedValues: z.array(z.string().max(1_000)).max(100).optional() }).strict().optional(),
   length: z.number().int().optional(),
   precision: z.number().int().optional(),
   scale: z.number().int().optional(),
 }).strict();
 const createTablePreviewSchema = z.object({
   connectionId: z.string().regex(/^[a-f0-9]{64}$/),
-  draft: z.object({ schema: z.string().max(128), table: z.string().max(128), columns: z.array(createTableColumnSchema).max(50) }).strict(),
+  draft: z.object({ schema: z.string().max(128), table: z.string().max(128), columns: z.array(createTableColumnSchema).max(50), uniqueConstraints: z.array(z.array(z.string().max(128)).min(2).max(50)).max(50).optional(), foreignKeyConstraints: z.array(z.object({ columns: z.array(z.string().max(128)).min(2).max(50), reference: z.object({ schema: z.string().max(128), table: z.string().max(128), columns: z.array(z.string().max(128)).min(2).max(50), onDelete: z.enum(['no action', 'restrict', 'cascade', 'set null', 'set default']), onUpdate: z.enum(['no action', 'restrict', 'cascade', 'set null', 'set default']) }).strict() }).strict()).max(50).optional() }).strict(),
 }).strict();
 connectionsRouter.post('/schema/preview-create-table', async (req, res) => {
   const parsed = createTablePreviewSchema.safeParse(req.body);
@@ -73,7 +89,7 @@ connectionsRouter.post('/schema/preview-create-table', async (req, res) => {
   const { connectionId, draft } = parsed.data;
   const session = getDatabaseSession(connectionId);
   if (!session) { res.status(410).json({ error: 'The database session expired. Test the connection again.' }); return; }
-  try { res.json(await previewCreateTable(session, connectionId, draft as { schema: string; table: string; columns: CreateTableColumnDraft[] })); }
+  try { res.json(await previewCreateTable(session, connectionId, draft as { schema: string; table: string; columns: CreateTableColumnDraft[]; uniqueConstraints?: string[][]; foreignKeyConstraints?: import('../services/schema-service.js').CreateTableDraft['foreignKeyConstraints'] })); }
   catch (error) {
     if (error instanceof SchemaOperationError) { res.status(error.status).json({ error: error.message }); return; }
     res.status(422).json({ error: 'Could not validate this table against the connected database.' });
@@ -119,6 +135,60 @@ connectionsRouter.post('/schema/add-column', async (req, res) => {
     const message = error instanceof Error ? error.message.split('\n', 1)[0].slice(0, 500) : 'The database rejected this column change.';
     res.status(422).json({ error: message || 'The database rejected this column change.' });
   }
+});
+
+connectionsRouter.post('/schema/preview-nullability', async (req, res) => {
+  const parsed = z.object({ connectionId: z.string().regex(/^[a-f0-9]{64}$/), sql: z.string().min(1).max(5_000) }).strict().safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'Enter one supported PostgreSQL ALTER TABLE statement.' }); return; }
+  const { connectionId, sql } = parsed.data; const session = getDatabaseSession(connectionId);
+  if (!session) { res.status(410).json({ error: 'The database session expired. Test the connection again.' }); return; }
+  try { res.json(await previewSetNullableColumn(session, connectionId, sql)); }
+  catch (error) { if (error instanceof SchemaOperationError) { res.status(error.status).json({ error: error.message }); return; } res.status(422).json({ error: 'Could not validate this change against the connected database.' }); }
+});
+
+connectionsRouter.post('/schema/set-nullability', async (req, res) => {
+  const parsed = z.object({ connectionId: z.string().regex(/^[a-f0-9]{64}$/), planId: z.string().regex(/^[a-f0-9]{64}$/) }).strict().safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'Invalid column edit confirmation' }); return; }
+  const { connectionId, planId } = parsed.data; const session = getDatabaseSession(connectionId);
+  if (!session) { res.status(410).json({ error: 'The database session expired. Test the connection again.' }); return; }
+  try { res.json(await executeSetNullableColumn(session, connectionId, planId)); }
+  catch (error) { if (error instanceof SchemaOperationError) { res.status(error.status).json({ error: error.message }); return; } const message = error instanceof Error ? error.message.split('\n', 1)[0].slice(0, 500) : 'The database rejected this column change.'; res.status(422).json({ error: message || 'The database rejected this column change.' }); }
+});
+
+connectionsRouter.post('/schema/preview-foreign-key', async (req, res) => {
+  const parsed = z.object({ connectionId: z.string().regex(/^[a-f0-9]{64}$/), draft: z.object({ sourceSchema: z.string(), sourceTable: z.string(), sourceColumn: z.string(), targetSchema: z.string(), targetTable: z.string(), targetColumn: z.string(), onDelete: z.enum(['no action', 'restrict', 'cascade', 'set null', 'set default']), onUpdate: z.enum(['no action', 'restrict', 'cascade', 'set null', 'set default']) }).strict() }).strict().safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'Choose valid columns and relationship actions.' }); return; }
+  const { connectionId, draft } = parsed.data; const session = getDatabaseSession(connectionId);
+  if (!session) { res.status(410).json({ error: 'The database session expired. Test the connection again.' }); return; }
+  try { res.json(await previewForeignKey(session, connectionId, draft as ForeignKeyDraft)); }
+  catch (error) { if (error instanceof SchemaOperationError) { res.status(error.status).json({ error: error.message }); return; } res.status(422).json({ error: 'Could not validate this relationship against the connected database.' }); }
+});
+
+connectionsRouter.post('/schema/add-foreign-key', async (req, res) => {
+  const parsed = z.object({ connectionId: z.string().regex(/^[a-f0-9]{64}$/), planId: z.string().regex(/^[a-f0-9]{64}$/) }).strict().safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'Invalid relationship confirmation' }); return; }
+  const { connectionId, planId } = parsed.data; const session = getDatabaseSession(connectionId);
+  if (!session) { res.status(410).json({ error: 'The database session expired. Test the connection again.' }); return; }
+  try { res.json(await executeForeignKey(session, connectionId, planId)); }
+  catch (error) { if (error instanceof SchemaOperationError) { res.status(error.status).json({ error: error.message }); return; } const message = error instanceof Error ? error.message.split('\n', 1)[0].slice(0, 500) : 'The database rejected this relationship.'; res.status(422).json({ error: message || 'The database rejected this relationship.' }); }
+});
+
+connectionsRouter.post('/schema/preview-drop-table', async (req, res) => {
+  const parsed = z.object({ connectionId: z.string().regex(/^[a-f0-9]{64}$/), schema: z.string().min(1).max(63), table: z.string().min(1).max(63), behavior: z.enum(['restrict', 'drop-constraints', 'cascade']) }).strict().safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'Choose a PostgreSQL table and a valid dependency behavior.' }); return; }
+  const { connectionId, schema, table, behavior } = parsed.data; const session = getDatabaseSession(connectionId);
+  if (!session) { res.status(410).json({ error: 'The database session expired. Test the connection again.' }); return; }
+  try { res.json(await previewDropTable(session, connectionId, schema, table, behavior)); }
+  catch (error) { if (error instanceof SchemaOperationError) { res.status(error.status).json({ error: error.message }); return; } const message = error instanceof Error ? error.message.split('\n', 1)[0].slice(0, 500) : 'The database rejected the dependency inspection.'; res.status(422).json({ error: `Could not inspect this table and its dependencies: ${message}` }); }
+});
+
+connectionsRouter.post('/schema/drop-table', async (req, res) => {
+  const parsed = z.object({ connectionId: z.string().regex(/^[a-f0-9]{64}$/), planId: z.string().regex(/^[a-f0-9]{64}$/) }).strict().safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'Invalid table deletion confirmation' }); return; }
+  const { connectionId, planId } = parsed.data; const session = getDatabaseSession(connectionId);
+  if (!session) { res.status(410).json({ error: 'The database session expired. Test the connection again.' }); return; }
+  try { res.json(await executeDropTable(session, connectionId, planId)); }
+  catch (error) { if (error instanceof SchemaOperationError) { res.status(error.status).json({ error: error.message }); return; } const message = error instanceof Error ? error.message.split('\n', 1)[0].slice(0, 500) : 'The database rejected this table deletion.'; res.status(422).json({ error: message || 'The database rejected this table deletion.' }); }
 });
 
 connectionsRouter.post('/introspect', async (req, res, next) => {
@@ -242,7 +312,7 @@ const recordDeleteSchema = recordMutationBase.extend({
   originalValues: z.record(z.unknown()).refine((value) => Object.keys(value).length > 0 && Object.keys(value).length <= 250),
 }).strict();
 const recordPlanSchema = z.object({ connectionId: z.string().regex(/^[a-f0-9]{64}$/), planId: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
-function mutationErrorMessage(error: unknown, action: 'insert' | 'delete') {
+export function mutationErrorMessage(error: unknown, action: 'insert' | 'delete') {
   const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : '';
   if (['23505', 'ER_DUP_ENTRY'].includes(code)) return 'A row with these unique values already exists. Change the values and review again.';
   if (['23503', 'ER_ROW_IS_REFERENCED_2', 'ER_ROW_IS_REFERENCED'].includes(code)) return 'This row is referenced by another record and cannot be deleted yet.';
