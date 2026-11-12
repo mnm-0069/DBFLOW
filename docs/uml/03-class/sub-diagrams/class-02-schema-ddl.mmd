@@ -1,0 +1,64 @@
+classDiagram
+    direction TB
+    class PostgresSchemaTable {
+        +string schema
+        +string name
+        +SchemaColumn[] columns
+        +KeyGroup[] keyGroups
+        +ForeignKeyMapping[] foreignKeys
+    }
+
+    class SchemaColumn {
+        +string name
+        +string type
+        +string key
+        +boolean unique
+        +boolean nullable
+        +boolean hasDefault
+        +boolean generated
+        +boolean identity
+    }
+
+    class KeyGroup {
+        +string kind
+        +string[] columns
+    }
+
+    class ForeignKeyMapping {
+        +string column
+        +string referencedSchema
+        +string referencedTable
+        +string referencedColumn
+        +string onDelete
+        +string onUpdate
+    }
+
+    class CreateTableDraft {
+        +string schema
+        +string table
+        +CreateTableColumnDraft[] columns
+        +string[][] uniqueConstraints
+        +CreateTableForeignKey[] foreignKeyConstraints
+    }
+
+    class CreateTableColumnDraft {
+        +string name
+        +CreateTableColumnType type
+        +boolean nullable
+        +boolean primaryKey
+        +boolean unique
+        +CreateTableDefault default
+        +CreateTableChecks checks
+    }
+
+    class CreateTablePlan {
+        +string planId
+        +string sql
+        +number expiresInSeconds
+    }
+
+    PostgresSchemaTable "1" *-- "1..*" SchemaColumn : contains
+    PostgresSchemaTable "1" o-- "0..*" KeyGroup : defines
+    PostgresSchemaTable "1" o-- "0..*" ForeignKeyMapping : defines
+    CreateTableDraft "1" *-- "1..*" CreateTableColumnDraft : contains
+    CreateTableDraft ..> CreateTablePlan : generates

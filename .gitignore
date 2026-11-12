@@ -16,3 +16,8 @@ test-results/
 # Local analysis and personal knowledge-base artifacts
 /graphify-out/
 /obsidian_knowledge_base/
+
+# Local runtime data and conversation caches
+/data/
+apps/api/data/
+

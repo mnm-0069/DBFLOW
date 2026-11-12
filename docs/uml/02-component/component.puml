@@ -1,0 +1,116 @@
+@startuml
+skinparam componentStyle uml2
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+skinparam backgroundColor #FFFFFF
+
+package "Client Tier (apps/web)" as ClientTier #EBF8FF {
+  [App Shell & Router
+(App.tsx)] as AppShell
+  [Schema Designer
+(React Flow Canvas)] as SchemaDesigner
+  [Data Explorer
+(AG Grid Community)] as DataExplorer
+  [SQL Workspace
+(Monaco Editor)] as SqlWorkspace
+  [Visual Query Builder] as QueryBuilder
+  [Analytics Dashboard] as AnalyticsView
+  [Copilot 2.0 Interface] as CopilotView
+  [Web API Client
+(Fetch Adapter)] as ApiClient
+
+  AppShell --> SchemaDesigner
+  AppShell --> DataExplorer
+  AppShell --> SqlWorkspace
+  AppShell --> QueryBuilder
+  AppShell --> AnalyticsView
+  AppShell --> CopilotView
+
+  SchemaDesigner --> ApiClient
+  DataExplorer --> ApiClient
+  SqlWorkspace --> ApiClient
+  QueryBuilder --> ApiClient
+  AnalyticsView --> ApiClient
+  CopilotView --> ApiClient
+}
+
+package "Shared Contracts (packages/shared)" as SharedTier #FEFCBF {
+  interface "Connection Models" as IConnModels
+  interface "Schema Models" as ISchemaModels
+  interface "Copilot & Telemetry" as ICopilotModels
+  interface "Health Scoring" as IHealthModels
+}
+
+package "Backend Service (apps/api - Loopback :4000)" as BackendTier #F3E8FF {
+  [Express HTTP Engine] as HttpServer
+  [Security & Zod Middleware] as Middleware
+  [Connections Router
+(/api/connections)] as ConnectionsRouter
+  [Copilot Router
+(/api/copilot)] as CopilotRouter
+  [Health Router
+(/api/health)] as HealthRouter
+
+  package "Domain Services" {
+    [Connection & Session Service] as ConnService
+    [Schema Introspection & DDL Service] as SchemaService
+    [Record Mutation Service] as RecordService
+    [Copilot Agent Engine & 14 Tools] as AgentEngine
+    [Database Health Analyzer] as HealthService
+    [SQL Intelligence & EXPLAIN Service] as SqlIntelService
+    [Intelligence Orchestrator] as IntelOrchestrator
+    [Intelligence & Conversation Store] as IntelStore
+    [AI Provider Gateway
+(Google GenAI)] as AiGateway
+  }
+
+  package "Database Driver Layer" {
+    [PostgreSQL Pool (pg.Pool)] as PgPool
+    [MySQL Pool (mysql2.Pool)] as MysqlPool
+  }
+
+  HttpServer --> Middleware
+  Middleware --> ConnectionsRouter
+  Middleware --> CopilotRouter
+  Middleware --> HealthRouter
+
+  ConnectionsRouter --> ConnService
+  ConnectionsRouter --> SchemaService
+  ConnectionsRouter --> RecordService
+  CopilotRouter --> AgentEngine
+  CopilotRouter --> HealthService
+  CopilotRouter --> SqlIntelService
+  CopilotRouter --> IntelOrchestrator
+
+  AgentEngine --> AiGateway
+  AgentEngine --> HealthService
+  AgentEngine --> SqlIntelService
+  IntelOrchestrator --> HealthService
+  IntelOrchestrator --> IntelStore
+
+  ConnService --> PgPool
+  ConnService --> MysqlPool
+  SchemaService --> PgPool
+  RecordService --> PgPool
+}
+
+database "PostgreSQL Server
+(:5432)" as PostgresDB #C6F6D5
+database "MySQL Server
+(:3306)" as MysqlDB #C6F6D5
+cloud "Google Gemini Cloud
+(generativelanguage.googleapis.com)" as GeminiCloud #FED7D7
+file "Local JSON Storage
+(intelligence-cache.json)" as DiskCache #EDF2F7
+
+ApiClient ==( HTTP / REST : HttpServer
+ClientTier ..> SharedTier : imports
+BackendTier ..> SharedTier : imports
+
+PgPool ==( TCP / Socket : PostgresDB
+MysqlPool ==( TCP / Socket : MysqlDB
+AiGateway ==( HTTPS / REST : GeminiCloud
+IntelStore --> DiskCache : file I/O
+@enduml

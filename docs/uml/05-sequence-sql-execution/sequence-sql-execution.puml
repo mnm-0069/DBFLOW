@@ -1,0 +1,70 @@
+@startuml
+autonumber
+skinparam roundcorner 6
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 11
+skinparam backgroundColor #FFFFFF
+
+actor "Analyst / Developer" as User
+participant "Monaco Editor
+(SqlWorkspace.tsx)" as Editor
+participant "QueryHistory
+(sessionStorage)" as HistStore
+participant "ConnectionsRouter
+(/api/connections/query)" as Route
+participant "ConnectionService" as ConnSvc
+participant "validateReadOnlyQuery()" as Validator
+database "Target PostgreSQL
+(pg.Pool)" as TargetDB
+participant "AG Grid Community" as AGGrid
+
+User -> Editor : Enters SQL & presses Cmd+Enter
+Editor -> HistStore : appendQueryHistory({query, status: 'running'})
+Editor -> Route : POST /api/connections/query
+{connectionId, query}
+
+Route -> ConnSvc : getDatabaseSession(connectionId)
+alt Session Expired
+  ConnSvc --> Route : null
+  Route --> Editor : HTTP 410 {error: "Session expired"}
+  Editor --> User : Prompts to reconnect
+else Session Active
+  Route -> Validator : validateReadOnlyQuery(query, engine)
+  alt Contains DDL/DML or Unsafe Function (PG_SLEEP, DBLINK)
+    Validator --> Route : throw ReadOnlyQueryValidationError()
+    Route --> Editor : HTTP 400 {error: "Data-changing SQL forbidden"}
+    Editor -> HistStore : updateQueryHistory(id, {status: 'failed'})
+    Editor --> User : Shows safety rejection banner
+  else Valid Read-Only Statement
+    Validator --> Route : OK
+    Route -> ConnSvc : executeDatabaseQuery(session, query)
+    ConnSvc -> TargetDB : Acquires client from pool
+    ConnSvc -> TargetDB : BEGIN READ ONLY;
+    ConnSvc -> TargetDB : SET statement_timeout = 8000;
+    ConnSvc -> TargetDB : Executes query (max 1,000 rows)
+    alt Execution / SQL Syntax Error
+      TargetDB --> ConnSvc : Error (e.g. column not found)
+      ConnSvc -> TargetDB : ROLLBACK;
+      ConnSvc -> TargetDB : Release client
+      ConnSvc --> Route : throws database error
+      Route --> Editor : HTTP 422 {error: "Column not found"}
+      Editor --> User : Highlights Monaco line error
+    else Successful Read
+      TargetDB --> ConnSvc : Returns raw rows & field descriptors
+      ConnSvc -> TargetDB : COMMIT;
+      ConnSvc -> TargetDB : Release client
+      alt Serialized JSON > 2 MB
+        ConnSvc --> Route : throw DatabaseQueryResultSizeError()
+        Route --> Editor : HTTP 413 {error: "Payload exceeds 2 MB"}
+      else Safe Payload Size
+        ConnSvc --> Route : {columns, rows, rowCount, executionTimeMs}
+        Route --> Editor : HTTP 200 {columns, rows, rowCount: 42, executionTimeMs: 14}
+        Editor -> HistStore : updateQueryHistory(id, {status: 'success'})
+        Editor -> AGGrid : Injects colDefs & rowData
+        AGGrid --> User : Displays formatted data grid
+      end
+    end
+  end
+end
+@enduml

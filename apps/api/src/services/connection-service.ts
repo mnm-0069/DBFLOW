@@ -113,8 +113,8 @@ const postgresSessions = new Map<string, PostgresSession>();
 type MysqlSession = { pool: mysql.Pool; database: string; lastUsedAt: number };
 const mysqlSessions = new Map<string, MysqlSession>();
 export type DatabaseSession =
-  | ({ engine: 'postgres' } & PostgresSession)
-  | ({ engine: 'mysql' } & MysqlSession);
+  | ({ engine: 'postgres'; connectionId?: string } & PostgresSession)
+  | ({ engine: 'mysql'; connectionId?: string } & MysqlSession);
 const SESSION_IDLE_TTL_MS = 15 * 60 * 1000;
 const MAX_POSTGRES_SESSIONS = 5;
 const MAX_MYSQL_SESSIONS = 5;
@@ -264,7 +264,19 @@ mysqlSessionCleanup.unref();
 export async function openPostgresSession(input: ConnectionInput) {
   if (input.engine !== 'postgres') throw new Error('This session requires PostgreSQL.');
   expireIdlePostgresSessions();
-  if (postgresSessions.size >= MAX_POSTGRES_SESSIONS) throw new PostgresSessionLimitError();
+  if (postgresSessions.size >= MAX_POSTGRES_SESSIONS) {
+    let oldestKey: string | null = null;
+    let oldestTime = Infinity;
+    for (const [key, s] of postgresSessions.entries()) {
+      if (s.lastUsedAt < oldestTime) {
+        oldestTime = s.lastUsedAt;
+        oldestKey = key;
+      }
+    }
+    if (oldestKey) {
+      await closePostgresSession(oldestKey);
+    }
+  }
   const endpoint = await resolveDatabaseHost(input.host);
 
   const pool = new Pool({
@@ -292,7 +304,19 @@ export async function openPostgresSession(input: ConnectionInput) {
       client.release();
     }
     expireIdlePostgresSessions();
-    if (postgresSessions.size >= MAX_POSTGRES_SESSIONS) throw new PostgresSessionLimitError();
+    if (postgresSessions.size >= MAX_POSTGRES_SESSIONS) {
+      let oldestKey: string | null = null;
+      let oldestTime = Infinity;
+      for (const [key, s] of postgresSessions.entries()) {
+        if (s.lastUsedAt < oldestTime) {
+          oldestTime = s.lastUsedAt;
+          oldestKey = key;
+        }
+      }
+      if (oldestKey) {
+        await closePostgresSession(oldestKey);
+      }
+    }
     const connectionId = randomBytes(32).toString('hex');
     postgresSessions.set(connectionId, { pool, database: input.database, lastUsedAt: Date.now() });
     return { success: true as const, engine: 'postgres' as const, connectionId, latencyMs: Date.now() - started, serverVersion, expiresInSeconds: SESSION_IDLE_TTL_MS / 1000 };
@@ -354,12 +378,12 @@ export function getDatabaseSession(connectionId: string): DatabaseSession | null
   const postgres = postgresSessions.get(connectionId);
   if (postgres) {
     postgres.lastUsedAt = Date.now();
-    return { engine: 'postgres', ...postgres };
+    return { engine: 'postgres', connectionId, ...postgres };
   }
   const mysqlSession = mysqlSessions.get(connectionId);
   if (mysqlSession) {
     mysqlSession.lastUsedAt = Date.now();
-    return { engine: 'mysql', ...mysqlSession };
+    return { engine: 'mysql', connectionId, ...mysqlSession };
   }
   return null;
 }

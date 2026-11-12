@@ -5,11 +5,11 @@ import { ModuleRegistry } from '@ag-grid-community/core';
 import { ClientSideRowModelModule } from '@ag-grid-community/client-side-row-model';
 import { Background, Controls, ReactFlow, BaseEdge, EdgeLabelRenderer, getSmoothStepPath, type Connection, type Edge, type EdgeProps, type Node, type NodeTypes, type ReactFlowInstance, Handle, Position } from '@xyflow/react';
 import {
-  Activity, ArrowDownUp, ArrowLeftRight, ArrowRight, Braces, Check, ChevronDown,
+  Activity, ArrowDownUp, ArrowLeftRight, ArrowRight, Bot, Braces, Check, ChevronDown,
   ChevronRight, CircleHelp, Clock3, Code2, Command, Database, Ellipsis, Eye,
   Copy, Download, FileCode2, Filter, GitBranch, GraduationCap, Grip, HardDrive, HelpCircle, History, Image, Printer, RotateCcw, AlertTriangle,
   KeyRound, LayoutDashboard, Layers3, Lightbulb, Link2, ListFilter, LockKeyhole, Maximize2, Menu,
-  MoreHorizontal, PanelLeftClose, Plus, Search, Settings2, ShieldCheck, Sparkles,
+  MoreHorizontal, PanelLeftClose, Plus, Search, Settings2, ShieldCheck, Sparkles, MessageSquareText,
   Table2, TerminalSquare, Trash2, X, Zap,
 } from 'lucide-react';
 import { CreateTableDialog } from './CreateTableDialog';
@@ -21,6 +21,8 @@ import { SchemaChangePlan } from './SchemaChangePlan';
 import { SchemaGroupsDialog } from './SchemaGroupsDialog';
 import { stageSchemaChange, type StagedSchemaChange } from './schema-change-plan';
 import { loadSchemaGroups, schemaGroupsStorageKey, type SchemaTableGroup } from './schema-groups';
+import { loadSchemaNotes, schemaColumnNoteKey, schemaNotesStorageKey, type SchemaNotes } from './schema-notes';
+import { SchemaNoteDialog } from './SchemaNoteDialog';
 import { readSchemaPreference, schemaConnectionScope, writeSchemaPreference } from './schema-preferences';
 import { buildSchemaSvg, downloadSchemaPng, downloadSchemaSvg, printSchemaSvg } from './schema-export';
 import { EditRecordDialog } from './EditRecordDialog';
@@ -29,17 +31,25 @@ import { DeleteRecordDialog } from './DeleteRecordDialog';
 import { QueryHistoryPanel } from './QueryHistoryPanel';
 import { loadQueryHistory, rememberQuery, saveQueryHistory, type QueryHistoryEntry } from './query-history';
 import { layoutSchemaTables, type SchemaPosition } from './schema-layout';
+import { DatabaseExplorer, type ExplorerTable } from './DatabaseExplorer';
+import { AnalyticsDashboard } from './AnalyticsDashboard';
+import { VisualQueryBuilder, type QueryBuilderTable } from './VisualQueryBuilder';
+import { DatabaseCopilot } from './DatabaseCopilot';
+import { LearningSection } from './LearningSection';
+import { DataExplorerView } from './DataExplorerView';
+import { formatSql, exportToCsv } from './sql-utils';
+import { DEMO_QUERIES } from './demo-queries';
 
 ModuleRegistry.registerModules([ClientSideRowModelModule]);
 const Editor = lazy(() => import('@monaco-editor/react'));
 
-type TableNodeData = { label: string; subtitle: string; columns: { name: string; type: string; key?: 'pk' | 'fk' | 'pk-fk'; unique?: boolean; nullable?: boolean; hasDefault?: boolean; identity?: boolean; generated?: boolean }[]; foreignKeys: Array<{ column: string; referencedSchema: string; referencedTable: string; referencedColumn: string }>; accent: string; groupName?: string; groupColor?: string };
+type TableNodeData = { label: string; subtitle: string; tableNote?: string; columns: { name: string; type: string; note?: string; key?: 'pk' | 'fk' | 'pk-fk'; unique?: boolean; nullable?: boolean; hasDefault?: boolean; identity?: boolean; generated?: boolean }[]; foreignKeys: Array<{ column: string; referencedSchema: string; referencedTable: string; referencedColumn: string }>; accent: string; groupName?: string; groupColor?: string };
 const ColumnSelectionContext = createContext<(tableId: string, columnName: string) => void>(() => {});
 const EdgeSelectionContext = createContext<(edgeId: string) => void>(() => {});
 const GroupToggleContext = createContext<(groupId: string) => void>(() => {});
 const TableGroupContext = createContext<{ groups: SchemaTableGroup[]; assign: (tableId: string, groupId: string | null) => void }>({ groups: [], assign: () => {} });
-type TableMenuActions = { openData: (tableId: string) => void; openSql: (tableId: string) => void; copyName: (tableId: string) => void; deleteTable: (tableId: string) => void };
-const TableMenuContext = createContext<TableMenuActions>({ openData: () => {}, openSql: () => {}, copyName: () => {}, deleteTable: () => {} });
+type TableMenuActions = { openData: (tableId: string) => void; openSql: (tableId: string) => void; copyName: (tableId: string) => void; analyzeImpact: (tableId: string) => void; editNote: (tableId: string, columnName?: string) => void; deleteTable: (tableId: string) => void };
+const TableMenuContext = createContext<TableMenuActions>({ openData: () => {}, openSql: () => {}, copyName: () => {}, analyzeImpact: () => {}, editNote: () => {}, deleteTable: () => {} });
 type LiveSchema = {
   engine: 'postgres' | 'mysql';
   database: string;
@@ -48,6 +58,7 @@ type LiveSchema = {
     schema: string;
     name: string;
     columns: Array<{ name: string; type: string; key?: 'pk' | 'fk' | 'pk-fk'; generated?: boolean; identity?: boolean; hasDefault?: boolean; nullable?: boolean; unique?: boolean; referenceable?: boolean }>;
+    keyGroups?: Array<{ kind: 'primary' | 'unique'; columns: string[] }>;
     foreignKeys: Array<{ column: string; referencedSchema: string; referencedTable: string; referencedColumn: string; onDelete?: string; onUpdate?: string }>;
   }>;
 };
@@ -69,26 +80,130 @@ type SqlWorkspaceResult = {
   source: 'database' | 'demo';
 };
 
+export const COLUMN_HOVER_DELAY_MS = 600;
+export const COLUMN_HOVER_DISMISS_DELAY_MS = 150;
+
 function TableNode({ data, id }: { data: any; id: string }) {
   const selectColumn = useContext(ColumnSelectionContext);
   const tableActions = useContext(TableMenuContext);
   const tableGroups = useContext(TableGroupContext);
   const assignedGroup = tableGroups.groups.find((group) => group.tableIds.includes(id));
   const [detail, setDetail] = useState<{ column: TableNodeData['columns'][number]; bounds: DOMRect } | null>(null);
-  const [tableMenu, setTableMenu] = useState<{ left: number; top: number } | null>(null);
+  const [tableMenu, setTableMenu] = useState<{ left: number; top: number; anchor: HTMLButtonElement } | null>(null);
+  
+  const hoverTimer = useRef<number | null>(null);
   const closeTimer = useRef<number | null>(null);
-  const showDetail = (column: TableNodeData['columns'][number], element: HTMLElement) => {
-    if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
-    setDetail({ column, bounds: element.getBoundingClientRect() });
+  const pendingColumnRef = useRef<string | null>(null);
+
+  const clearHoverTimer = () => {
+    if (hoverTimer.current !== null) {
+      window.clearTimeout(hoverTimer.current);
+      hoverTimer.current = null;
+    }
+    pendingColumnRef.current = null;
   };
-  const scheduleClose = () => { closeTimer.current = window.setTimeout(() => setDetail(null), 150); };
+
+  const clearCloseTimer = () => {
+    if (closeTimer.current !== null) {
+      window.clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  };
+
+  const handleColumnMouseEnter = (column: TableNodeData['columns'][number], element: HTMLElement) => {
+    clearCloseTimer();
+
+    // If moving to a different column while a popover is active, dismiss previous immediately
+    if (detail && detail.column.name !== column.name) {
+      setDetail(null);
+    }
+
+    // Cancel any previous pending hover timer
+    clearHoverTimer();
+
+    // If this column is already displaying details, sync ref and return
+    if (detail && detail.column.name === column.name) {
+      pendingColumnRef.current = column.name;
+      return;
+    }
+
+    // Start configurable delay activation timer
+    pendingColumnRef.current = column.name;
+    hoverTimer.current = window.setTimeout(() => {
+      if (pendingColumnRef.current === column.name) {
+        setDetail({ column, bounds: element.getBoundingClientRect() });
+      }
+      hoverTimer.current = null;
+    }, COLUMN_HOVER_DELAY_MS);
+  };
+
+  const handleColumnMouseLeave = (columnName?: string) => {
+    // Immediately cancel pending hover activation if leaving before delay expires
+    if (!columnName || pendingColumnRef.current === columnName) {
+      clearHoverTimer();
+    }
+
+    // If detail popover is currently open, schedule prompt dismissal
+    clearCloseTimer();
+    closeTimer.current = window.setTimeout(() => {
+      setDetail(null);
+      closeTimer.current = null;
+    }, COLUMN_HOVER_DISMISS_DELAY_MS);
+  };
+
+  const handleImmediateDismiss = () => {
+    clearHoverTimer();
+    clearCloseTimer();
+    setDetail(null);
+  };
+
+  // Cleanup timers on component unmount
+  useEffect(() => {
+    return () => {
+      clearHoverTimer();
+      clearCloseTimer();
+    };
+  }, []);
+
+  // Dismiss floating popover when canvas is scrolled or resized
+  useEffect(() => {
+    if (!detail) return;
+    const onScrollOrResize = () => handleImmediateDismiss();
+    window.addEventListener('scroll', onScrollOrResize, true);
+    window.addEventListener('resize', onScrollOrResize);
+    return () => {
+      window.removeEventListener('scroll', onScrollOrResize, true);
+      window.removeEventListener('resize', onScrollOrResize);
+    };
+  }, [detail]);
+
+  useEffect(() => {
+    if (!tableMenu) return;
+    const closeMenu = () => setTableMenu(null);
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element) || tableMenu.anchor.contains(target) || target.closest('.table-context-menu')) return;
+      closeMenu();
+    };
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') closeMenu(); };
+    window.addEventListener('scroll', closeMenu, true);
+    window.addEventListener('resize', closeMenu);
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('scroll', closeMenu, true);
+      window.removeEventListener('resize', closeMenu);
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [tableMenu]);
   const foreignKey = detail && data.foreignKeys?.find((item: TableNodeData['foreignKeys'][number]) => item.column === detail.column.name);
   const keyConstraints = detail ? [
     ...(detail.column.key === 'pk' || detail.column.key === 'pk-fk' ? ['Primary key'] : []),
     ...(detail.column.key === 'fk' || detail.column.key === 'pk-fk' ? ['Foreign key'] : []),
     ...(detail.column.unique ? ['Unique'] : []),
   ] : [];
-  const tooltip = detail ? createPortal(<div className="column-detail-popover" role="tooltip" onMouseEnter={() => { if (closeTimer.current !== null) window.clearTimeout(closeTimer.current); }} onMouseLeave={scheduleClose} style={{ left: Math.min(detail.bounds.right + 10, window.innerWidth - 282), top: Math.max(12, Math.min(detail.bounds.top - 8, window.innerHeight - 230)) }}>
+  const tooltip = detail ? createPortal(<div className="column-detail-popover" role="tooltip" onMouseEnter={clearCloseTimer} onMouseLeave={() => handleColumnMouseLeave(detail.column.name)} style={{ left: Math.min(detail.bounds.right + 10, window.innerWidth - 282), top: Math.max(12, Math.min(detail.bounds.top - 8, window.innerHeight - 230)) }}>
     <div className="column-detail-heading"><strong>{detail.column.name}</strong><code>{detail.column.type}</code></div>
     <div className="column-detail-list">
       <span><b>Nullable</b>{detail.column.nullable === undefined ? 'Not available' : detail.column.nullable ? 'Yes' : 'No · NOT NULL'}</span>
@@ -96,23 +211,26 @@ function TableNode({ data, id }: { data: any; id: string }) {
       <span><b>Key</b>{keyConstraints.length ? keyConstraints.join(' · ') : 'None'}</span>
       <span><b>Generated</b>{detail.column.identity ? 'Identity' : detail.column.generated ? 'Generated' : detail.column.identity === undefined && detail.column.generated === undefined ? 'Not available' : 'No'}</span>
       {foreignKey && <span className="column-detail-reference"><b>References</b>{foreignKey.referencedSchema}.{foreignKey.referencedTable}.{foreignKey.referencedColumn}</span>}
+      {detail.column.note && <span className="column-detail-note"><b>Description</b>{detail.column.note}</span>}
     </div>
   </div>, document.body) : null;
   return <div className={`table-node${assignedGroup ? ' has-table-group' : ''}`} style={assignedGroup ? { '--table-group-color': assignedGroup.color } as React.CSSProperties : undefined}>
     <Handle type="target" position={Position.Left} className="node-handle" />
-    <div className="table-node-head"><div className="table-icon"><Table2 size={14} /></div><div className="table-head-copy"><strong>{data.label}</strong><div className="table-meta-row"><span>{data.subtitle}</span>{assignedGroup && <span className="table-group-badge" style={{ '--group-color': assignedGroup.color } as React.CSSProperties}><span className="table-group-badge-dot"/>{assignedGroup.name}</span>}</div></div><button className="table-menu-trigger nodrag nopan" aria-label={`Open actions for ${data.label}`} aria-haspopup="menu" aria-expanded={Boolean(tableMenu)} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); const bounds = event.currentTarget.getBoundingClientRect(); setTableMenu((current) => current ? null : { left: Math.min(bounds.right - 190, window.innerWidth - 198), top: bounds.bottom + 7 }); }}><Ellipsis size={17}/></button>
+    <div className="table-node-head" onMouseEnter={handleImmediateDismiss}><div className="table-icon"><Table2 size={14} /></div><div className="table-head-copy"><strong>{data.label}</strong><div className="table-meta-row"><span>{data.subtitle}</span>{assignedGroup && <span className="table-group-badge" style={{ '--group-color': assignedGroup.color } as React.CSSProperties}><span className="table-group-badge-dot"/>{assignedGroup.name}</span>}</div></div>{data.tableNote && <button className="table-note-indicator nodrag nopan" aria-label={`Edit description for ${data.label}`} title={data.tableNote} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); tableActions.editNote(id); }}><MessageSquareText size={13}/></button>}<button className="table-menu-trigger nodrag nopan" aria-label={`Open actions for ${data.label}`} aria-haspopup="menu" aria-expanded={Boolean(tableMenu)} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); const anchor = event.currentTarget; const bounds = anchor.getBoundingClientRect(); setTableMenu((current) => current ? null : { left: Math.min(bounds.right - 190, window.innerWidth - 198), top: bounds.bottom + 7, anchor }); }}><Ellipsis size={17}/></button>
       {tableMenu && createPortal(<div className="table-context-menu" role="menu" aria-label={`${data.label} actions`} style={{ left: Math.max(8, tableMenu.left), top: tableMenu.top }}>
         <button role="menuitem" onClick={(event) => { event.stopPropagation(); setTableMenu(null); tableActions.openData(id); }}><Eye size={14}/> View table data</button>
         <button role="menuitem" onClick={(event) => { event.stopPropagation(); setTableMenu(null); tableActions.openSql(id); }}><FileCode2 size={14}/> Open in SQL workspace</button>
         <button role="menuitem" onClick={(event) => { event.stopPropagation(); setTableMenu(null); tableActions.copyName(id); }}><Copy size={14}/> Copy qualified name</button>
+        <button role="menuitem" onClick={(event) => { event.stopPropagation(); setTableMenu(null); tableActions.editNote(id); }}><MessageSquareText size={14}/> {data.tableNote ? 'Edit table note' : 'Add table note'}</button>
+        <button role="menuitem" onClick={(event) => { event.stopPropagation(); setTableMenu(null); tableActions.analyzeImpact(id); }}><GitBranch size={14}/> Analyze impact</button>
         <div className="table-menu-separator" role="separator"/>
         <div className="table-group-menu" role="group" aria-label="Assign table to group"><small>Move to group</small>{tableGroups.groups.map((group) => <button role="menuitem" key={group.id} onClick={(event) => { event.stopPropagation(); tableGroups.assign(id, group.id); setTableMenu(null); }}><span className="group-color-dot" style={{ '--group-color': group.color } as React.CSSProperties}/>{group.name}{assignedGroup?.id === group.id && <Check size={12}/>}</button>)}<button role="menuitem" onClick={(event) => { event.stopPropagation(); tableGroups.assign(id, null); setTableMenu(null); }}><span className="group-color-dot unassigned"/>Unassigned{!assignedGroup && <Check size={12}/>}</button></div>
         <div className="table-menu-separator" role="separator"/>
         <button className="table-menu-danger" role="menuitem" onClick={(event) => { event.stopPropagation(); setTableMenu(null); tableActions.deleteTable(id); }}><Trash2 size={14}/> Delete table…</button>
       </div>, document.body)}
     </div>
-    <div className="table-node-columns">{data.columns.map((col: TableNodeData['columns'][number]) => <div className={`node-column nodrag nopan${data.selectedColumn === col.name ? ' column-selected' : ''}`} key={col.name} role="button" tabIndex={0} aria-pressed={data.selectedColumn === col.name} aria-label={`${col.name}, ${col.type}. Select to inspect column properties.`} onClick={() => selectColumn(id, col.name)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectColumn(id, col.name); } }} onMouseEnter={(event) => showDetail(col, event.currentTarget)} onMouseLeave={scheduleClose} onFocus={(event) => showDetail(col, event.currentTarget)} onBlur={scheduleClose}><span className="column-symbol">{col.key === 'pk-fk' ? <><KeyRound size={10}/><Link2 size={10}/></> : col.key === 'pk' ? <KeyRound size={11}/> : col.key === 'fk' ? <Link2 size={11}/> : <span className="tiny-dot"/>}</span><span className="column-name">{col.name}</span><span className="column-type">{col.type}</span></div>)}</div>
-    <div className="table-node-foot"><span><span className="status-dot" /> Synced</span><span>{data.columns.length} columns</span></div>
+    <div className="table-node-columns" onMouseLeave={() => handleColumnMouseLeave()}>{data.columns.map((col: TableNodeData['columns'][number]) => <div className={`node-column nodrag nopan${data.selectedColumn === col.name ? ' column-selected' : ''}`} key={col.name} role="button" tabIndex={0} aria-pressed={data.selectedColumn === col.name} aria-label={`${col.name}, ${col.type}${col.note ? `, note: ${col.note}` : ''}. Select to inspect column properties.`} onClick={() => selectColumn(id, col.name)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectColumn(id, col.name); } }} onMouseEnter={(event) => handleColumnMouseEnter(col, event.currentTarget)} onMouseLeave={() => handleColumnMouseLeave(col.name)} onFocus={(event) => handleColumnMouseEnter(col, event.currentTarget)} onBlur={() => handleColumnMouseLeave(col.name)}><span className="column-symbol">{col.key === 'pk-fk' ? <><KeyRound size={10}/><Link2 size={10}/></> : col.key === 'pk' ? <KeyRound size={11}/> : col.key === 'fk' ? <Link2 size={11}/> : <span className="tiny-dot"/>}</span>{col.note && <MessageSquareText className="column-note-indicator" size={11} aria-hidden="true"/>}<span className="column-name">{col.name}</span><span className="column-type">{col.type}</span></div>)}</div>
+    <div className="table-node-foot" onMouseEnter={handleImmediateDismiss}><span><span className="status-dot" /> Synced</span><span>{data.columns.length} columns</span></div>
     <Handle type="source" position={Position.Right} className="node-handle" />
     {tooltip}
   </div>;
@@ -124,16 +242,38 @@ function TableGroupNode({ id, data }: { id: string; data: { label: string; color
 }
 const nodeTypes: NodeTypes = { tableNode: TableNode, tableGroup: TableGroupNode };
 function RelationshipEdge(props: EdgeProps) {
-  const { id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, markerEnd, label } = props;
+  const { id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, markerEnd, label, data } = props;
   const selectEdge = useContext(EdgeSelectionContext);
   const [edgePath, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, borderRadius: 12 });
   const distance = Math.hypot(targetX - sourceX, targetY - sourceY);
   const labelText = typeof label === 'string' ? label : '';
-  const hidden = distance < 155;
-  const maxWidth = Math.max(112, Math.min(340, distance * 0.82));
+  const cardinality = typeof data?.cardinalityLabel === 'string' ? data.cardinalityLabel : '';
+  const isManyToMany = data?.relationshipKind === 'junction';
+  const hidden = distance < 95;
   return <>
     <BaseEdge id={id} path={edgePath} style={style} markerEnd={markerEnd}/>
-    {!hidden && labelText && <EdgeLabelRenderer><div className="relationship-edge-label" role="button" tabIndex={0} aria-label={`Inspect relationship: ${labelText}`} title="Click to inspect relationship" style={{ left: labelX, top: labelY, maxWidth }} onClick={(event) => { event.stopPropagation(); selectEdge(id); }} onPointerDown={(event) => event.stopPropagation()} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); selectEdge(id); } }}><span>{labelText}</span></div></EdgeLabelRenderer>}
+    {!hidden && (labelText || cardinality) && (
+      <EdgeLabelRenderer>
+        <div
+          className={`relationship-edge-label${isManyToMany ? ' is-many-to-many' : ''}`}
+          role="button"
+          tabIndex={0}
+          aria-label={`Inspect ${cardinality ? `${cardinality} relationship: ` : 'relationship: '}${labelText}`}
+          title={`${cardinality ? `${cardinality} · ` : ''}${labelText}\nClick to inspect relationship`}
+          style={{
+            position: 'absolute',
+            transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+            pointerEvents: 'all',
+          }}
+          onClick={(event) => { event.stopPropagation(); selectEdge(id); }}
+          onPointerDown={(event) => event.stopPropagation()}
+          onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); selectEdge(id); } }}
+        >
+          {cardinality && <span className="relationship-cardinality">{cardinality}</span>}
+          {distance >= 140 && labelText && <span className="relationship-edge-detail">{labelText}</span>}
+        </div>
+      </EdgeLabelRenderer>
+    )}
   </>;
 }
 const edgeTypes = { relationshipEdge: RelationshipEdge };
@@ -171,21 +311,70 @@ function makeSchemaGraph(schema: LiveSchema, savedPositions: Record<string, Sche
     data: { label: table.name, subtitle: `${table.schema} · table`, accent: 'blue', columns: table.columns, foreignKeys: table.foreignKeys },
   }));
   const nodeIds = new Set(nodes.map((node) => node.id));
-  const relationships = new Map<string, { source: string; target: string; labels: Set<string> }>();
+  const relationships = new Map<string, { source: string; target: string; labels: Set<string>; foreignKeyColumns: Set<string>; referencingTable: LiveSchema['tables'][number] }>();
   for (const table of schema.tables) for (const foreignKey of table.foreignKeys) {
     const source = schemaTableId(foreignKey.referencedSchema, foreignKey.referencedTable);
     const target = schemaTableId(table.schema, table.name);
     if (!nodeIds.has(source) || !nodeIds.has(target)) continue;
     const key = JSON.stringify([source, target]);
-    const relationship = relationships.get(key) ?? { source, target, labels: new Set<string>() };
-    relationship.labels.add(`${foreignKey.column} → ${foreignKey.referencedSchema}.${foreignKey.referencedTable}.${foreignKey.referencedColumn}`);
+    const relationship = relationships.get(key) ?? { source, target, labels: new Set<string>(), foreignKeyColumns: new Set<string>(), referencingTable: table };
+    relationship.labels.add(`${foreignKey.column} → ${foreignKey.referencedColumn}`);
+    relationship.foreignKeyColumns.add(foreignKey.column);
     relationships.set(key, relationship);
   }
-  const edges: Edge[] = [...relationships.values()].map(({ source, target, labels }) => ({
-    id: `fk:${source}:${target}`, source, target, type: 'relationshipEdge', label: [...labels].join('   ·   '),
-    style: { stroke: '#3569c8', strokeWidth: 1.7 },
-  } as Edge));
+  const isUniqueColumnSet = (table: LiveSchema['tables'][number], columns: Set<string>) => {
+    const matchesExactly = (candidate: string[]) => candidate.length === columns.size && candidate.every((column) => columns.has(column));
+    return Boolean(table.keyGroups?.some((group) => matchesExactly(group.columns)) || (columns.size === 1 && table.columns.some((column) => columns.has(column.name) && (column.unique || column.key === 'pk' || column.key === 'pk-fk'))));
+  };
+  const edges: Edge[] = [...relationships.values()].map(({ source, target, labels, foreignKeyColumns, referencingTable }) => {
+    const oneToOne = isUniqueColumnSet(referencingTable, foreignKeyColumns);
+    return {
+      id: `fk:${source}:${target}`, source, target, type: 'relationshipEdge', label: [...labels].join('   ·   '),
+      data: { cardinality: oneToOne ? 'one-to-one' : 'one-to-many', cardinalityLabel: oneToOne ? '1 : 1' : '1 : N', relationshipKind: 'foreign-key' },
+      style: { stroke: '#3569c8', strokeWidth: 1.7 },
+    } as Edge;
+  });
+  for (const table of schema.tables) {
+    const foreignKeyColumns = new Set(table.foreignKeys.map((foreignKey) => foreignKey.column));
+    const parentIds = [...new Set(table.foreignKeys.map((foreignKey) => schemaTableId(foreignKey.referencedSchema, foreignKey.referencedTable)).filter((id) => id !== schemaTableId(table.schema, table.name) && nodeIds.has(id)))].sort();
+    if (parentIds.length < 2 || !isUniqueColumnSet(table, foreignKeyColumns)) continue;
+    for (let left = 0; left < parentIds.length; left += 1) for (let right = left + 1; right < parentIds.length; right += 1) {
+      const source = parentIds[left];
+      const target = parentIds[right];
+      edges.push({
+        id: `m2m:${schemaTableId(table.schema, table.name)}:${source}:${target}`,
+        source, target, type: 'relationshipEdge', label: `via ${table.schema}.${table.name}`,
+        data: { cardinality: 'many-to-many', cardinalityLabel: 'M : N', relationshipKind: 'junction', junctionTableId: schemaTableId(table.schema, table.name) },
+        style: { stroke: '#8165bd', strokeWidth: 1.6, strokeDasharray: '5 4' },
+      } as Edge);
+    }
+  }
   return { nodes, edges };
+}
+
+type ImpactDirection = 'referencing' | 'referenced';
+function collectTableImpact(rootId: string, direction: ImpactDirection, edges: Edge[]) {
+  const adjacent = new Map<string, Edge[]>();
+  for (const edge of edges) {
+    if ((edge.data as { relationshipKind?: string } | undefined)?.relationshipKind === 'junction') continue;
+    const from = direction === 'referencing' ? edge.source : edge.target;
+    adjacent.set(from, [...(adjacent.get(from) ?? []), edge]);
+  }
+  const visited = new Set([rootId]);
+  const queue: Array<{ tableId: string; path: Edge[] }> = [{ tableId: rootId, path: [] }];
+  const result: Array<{ tableId: string; path: Edge[] }> = [];
+  while (queue.length) {
+    const current = queue.shift()!;
+    for (const edge of adjacent.get(current.tableId) ?? []) {
+      const tableId = direction === 'referencing' ? edge.target : edge.source;
+      if (visited.has(tableId)) continue;
+      visited.add(tableId);
+      const path = [...current.path, edge];
+      result.push({ tableId, path });
+      queue.push({ tableId, path });
+    }
+  }
+  return result;
 }
 
 function quoteSqlIdentifier(identifier: string, engine: LiveSchema['engine']) {
@@ -197,10 +386,10 @@ function addColumnStarterSql(table: Pick<LiveSchema['tables'][number], 'schema' 
 }
 
 const initialNodes: Node[] = [
-  { id: 'users', type: 'tableNode', position: { x: 90, y: 80 }, data: { label: 'users', subtitle: 'public · table', accent: 'violet', columns: [{ name: 'id', type: 'uuid', key: 'pk' }, { name: 'full_name', type: 'varchar(120)' }, { name: 'email', type: 'varchar(255)' }, { name: 'created_at', type: 'timestamp' }] } },
-  { id: 'orders', type: 'tableNode', position: { x: 430, y: 210 }, data: { label: 'orders', subtitle: 'public · table', accent: 'blue', columns: [{ name: 'id', type: 'uuid', key: 'pk' }, { name: 'user_id', type: 'uuid', key: 'fk' }, { name: 'total', type: 'numeric(10,2)' }, { name: 'status', type: 'varchar(24)' }] } },
-  { id: 'order_items', type: 'tableNode', position: { x: 430, y: 80 }, data: { label: 'order_items', subtitle: 'public · table', accent: 'mint', columns: [{ name: 'id', type: 'uuid', key: 'pk' }, { name: 'order_id', type: 'uuid', key: 'fk' }, { name: 'product_id', type: 'uuid', key: 'fk' }, { name: 'quantity', type: 'integer' }] } },
-  { id: 'products', type: 'tableNode', position: { x: 90, y: 380 }, data: { label: 'products', subtitle: 'public · table', accent: 'orange', columns: [{ name: 'id', type: 'uuid', key: 'pk' }, { name: 'name', type: 'varchar(180)' }, { name: 'price', type: 'numeric(10,2)' }, { name: 'stock', type: 'integer' }] } },
+  { id: 'users', type: 'tableNode', position: { x: 60, y: 60 }, data: { label: 'users', subtitle: 'public · table', accent: 'violet', columns: [{ name: 'id', type: 'uuid', key: 'pk' }, { name: 'full_name', type: 'varchar(120)' }, { name: 'email', type: 'varchar(255)' }, { name: 'created_at', type: 'timestamp' }] } },
+  { id: 'orders', type: 'tableNode', position: { x: 420, y: 60 }, data: { label: 'orders', subtitle: 'public · table', accent: 'blue', columns: [{ name: 'id', type: 'uuid', key: 'pk' }, { name: 'user_id', type: 'uuid', key: 'fk' }, { name: 'total', type: 'numeric(10,2)' }, { name: 'status', type: 'varchar(24)' }] } },
+  { id: 'order_items', type: 'tableNode', position: { x: 780, y: 60 }, data: { label: 'order_items', subtitle: 'public · table', accent: 'mint', columns: [{ name: 'id', type: 'uuid', key: 'pk' }, { name: 'order_id', type: 'uuid', key: 'fk' }, { name: 'product_id', type: 'uuid', key: 'fk' }, { name: 'quantity', type: 'integer' }] } },
+  { id: 'products', type: 'tableNode', position: { x: 780, y: 360 }, data: { label: 'products', subtitle: 'public · table', accent: 'orange', columns: [{ name: 'id', type: 'uuid', key: 'pk' }, { name: 'name', type: 'varchar(180)' }, { name: 'price', type: 'numeric(10,2)' }, { name: 'stock', type: 'integer' }] } },
 ];
 const initialEdges: Edge[] = [
   { id: 'e1', source: 'users', target: 'orders', label: '1 : N', type: 'smoothstep', animated: false, style: { stroke: '#7771e8', strokeWidth: 1.7 }, labelStyle: { fill: '#b7b5d8', fontSize: 10 }, labelBgStyle: { fill: '#ffffff', fillOpacity: 1 } },
@@ -208,21 +397,40 @@ const initialEdges: Edge[] = [
   { id: 'e3', source: 'products', target: 'order_items', label: '1 : N', type: 'smoothstep', style: { stroke: '#7771e8', strokeWidth: 1.7 }, labelStyle: { fill: '#b7b5d8', fontSize: 10 }, labelBgStyle: { fill: '#ffffff', fillOpacity: 1 } },
 ];
 
-const sampleRows = [
-  { id: 'ORD-1042', user_id: 'USR-0081', total: 249.99, status: 'completed', created_at: '2026-10-18 09:42:18' },
-  { id: 'ORD-1041', user_id: 'USR-0024', total: 89.5, status: 'processing', created_at: '2026-10-18 09:38:03' },
-  { id: 'ORD-1040', user_id: 'USR-0145', total: 1299.0, status: 'completed', created_at: '2026-10-18 09:21:47' },
-  { id: 'ORD-1039', user_id: 'USR-0019', total: 42.0, status: 'pending', created_at: '2026-10-18 08:56:12' },
-  { id: 'ORD-1038', user_id: 'USR-0081', total: 315.75, status: 'completed', created_at: '2026-10-17 22:14:52' },
-  { id: 'ORD-1037', user_id: 'USR-0033', total: 78.25, status: 'cancelled', created_at: '2026-10-17 21:50:10' },
-  { id: 'ORD-1036', user_id: 'USR-0090', total: 512.0, status: 'processing', created_at: '2026-10-17 21:02:37' },
-  { id: 'ORD-1035', user_id: 'USR-0011', total: 159.99, status: 'completed', created_at: '2026-10-17 19:48:21' },
-];
+const sampleRowsByTable: Record<string, Record<string, unknown>[]> = {
+  users: [
+    { id: 'usr-1001', full_name: 'Avery Chen', email: 'avery@example.test', created_at: '2026-10-12 09:14:00' },
+    { id: 'usr-1002', full_name: 'Jordan Patel', email: 'jordan@example.test', created_at: '2026-10-13 11:32:00' },
+    { id: 'usr-1003', full_name: 'Morgan Lee', email: 'morgan@example.test', created_at: '2026-10-14 15:48:00' },
+  ],
+  orders: [
+    { id: 'ORD-1042', user_id: 'USR-0081', total: 249.99, status: 'completed', created_at: '2026-10-18 09:42:18' },
+    { id: 'ORD-1041', user_id: 'USR-0024', total: 89.5, status: 'processing', created_at: '2026-10-18 09:38:03' },
+    { id: 'ORD-1040', user_id: 'USR-0145', total: 1299.0, status: 'completed', created_at: '2026-10-18 09:21:47' },
+    { id: 'ORD-1039', user_id: 'USR-0019', total: 42.0, status: 'pending', created_at: '2026-10-18 08:56:12' },
+    { id: 'ORD-1038', user_id: 'USR-0081', total: 315.75, status: 'completed', created_at: '2026-10-17 22:14:52' },
+    { id: 'ORD-1037', user_id: 'USR-0033', total: 78.25, status: 'cancelled', created_at: '2026-10-17 21:50:10' },
+    { id: 'ORD-1036', user_id: 'USR-0090', total: 512.0, status: 'processing', created_at: '2026-10-17 21:02:37' },
+    { id: 'ORD-1035', user_id: 'USR-0011', total: 159.99, status: 'completed', created_at: '2026-10-17 19:48:21' },
+  ],
+  order_items: [
+    { id: 'itm-3001', order_id: 'ORD-1042', product_id: 'prd-5001', quantity: 2 },
+    { id: 'itm-3002', order_id: 'ORD-1042', product_id: 'prd-5003', quantity: 1 },
+    { id: 'itm-3003', order_id: 'ORD-1041', product_id: 'prd-5002', quantity: 1 },
+    { id: 'itm-3004', order_id: 'ORD-1040', product_id: 'prd-5003', quantity: 3 },
+  ],
+  products: [
+    { id: 'prd-5001', name: 'Everyday Backpack', price: 79.99, stock: 42 },
+    { id: 'prd-5002', name: 'Wireless Headphones', price: 89.5, stock: 18 },
+    { id: 'prd-5003', name: 'Studio Monitor', price: 1299.0, stock: 7 },
+  ],
+};
+const sampleRows = sampleRowsByTable.orders;
 const initialSql = `SELECT *\nFROM orders\nLIMIT 100;`;
 
-type Section = 'overview' | 'schema' | 'data' | 'sql' | 'learning';
+type Section = 'overview' | 'schema' | 'data' | 'sql' | 'builder' | 'analytics' | 'copilot' | 'learning';
 function App() {
-  const [section, setSection] = useState<Section>('schema');
+  const [section, setSection] = useState<Section>('overview');
   const [sidebarOpen, setSidebarOpen] = useState(() => window.matchMedia('(min-width: 761px)').matches);
   const [activeTable, setActiveTable] = useState('orders');
   const [sql, setSql] = useState(initialSql);
@@ -258,8 +466,12 @@ function App() {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [schemaGroups, setSchemaGroups] = useState<SchemaTableGroup[]>(() => loadSchemaGroups('demo:commerce_demo'));
   const [schemaGroupScope, setSchemaGroupScope] = useState('demo:commerce_demo');
+  const [schemaNotes, setSchemaNotes] = useState<SchemaNotes>(() => loadSchemaNotes('demo:commerce_demo'));
+  const [schemaNoteTarget, setSchemaNoteTarget] = useState<{ tableId: string; columnName?: string } | null>(null);
   const [showSchemaGroups, setShowSchemaGroups] = useState(false);
   const [selectedRelationshipId, setSelectedRelationshipId] = useState<string | null>(null);
+  const [impactTableId, setImpactTableId] = useState<string | null>(null);
+  const [impactDirection, setImpactDirection] = useState<ImpactDirection>('referencing');
   const [schemaChangePlan, setSchemaChangePlan] = useState<StagedSchemaChange[]>([]);
   const [showSchemaChangePlan, setShowSchemaChangePlan] = useState(false);
   const [schemaFlow, setSchemaFlow] = useState<ReactFlowInstance | null>(null);
@@ -287,6 +499,7 @@ function App() {
   const updateSchemaGroup = (groupId: string, patch: Partial<Pick<SchemaTableGroup, 'name' | 'color'>>) => setSchemaGroups((current) => current.map((group) => group.id === groupId ? { ...group, ...patch } : group));
   const deleteSchemaGroup = (groupId: string) => setSchemaGroups((current) => current.filter((group) => group.id !== groupId));
   useEffect(() => { writeSchemaPreference(schemaGroupsStorageKey(schemaGroupScope), JSON.stringify(schemaGroups)); }, [schemaGroupScope, schemaGroups]);
+  useEffect(() => { writeSchemaPreference(schemaNotesStorageKey(schemaGroupScope), JSON.stringify(schemaNotes)); }, [schemaGroupScope, schemaNotes]);
   const stageSchemaPlanEntry = (change: Parameters<typeof stageSchemaChange>[0]) => setSchemaChangePlan((current) => [...current, stageSchemaChange(change)]);
   const applyCompletedSchemaPlan = async (applied: StagedSchemaChange[]) => {
     const completed = new Set(applied.map((change) => change.id));
@@ -302,6 +515,8 @@ function App() {
   };
   const selectedLiveTable = liveSchema?.tables.find((table) => schemaTableId(table.schema, table.name) === activeTable);
   const selectedLiveColumn = selectedColumn?.tableId === activeTable ? selectedLiveTable?.columns.find((column) => column.name === selectedColumn.name) : undefined;
+  const selectedDemoColumn = !liveSchema && selectedColumn ? (nodes.find((node) => node.id === selectedColumn.tableId)?.data as TableNodeData | undefined)?.columns.find((column) => column.name === selectedColumn.name) : undefined;
+  const selectedLiveColumnNote = selectedColumn ? schemaNotes.columns[schemaColumnNoteKey(selectedColumn.tableId, selectedColumn.name)] ?? '' : '';
   useEffect(() => {
     if (!selectedColumn || !selectedLiveColumn) return;
     const frame = window.requestAnimationFrame(() => columnInspectorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
@@ -329,7 +544,10 @@ function App() {
   const collapsedSchemaGroups = schemaGroups.filter((group) => group.collapsed && group.tableIds.some((id) => schemaNodeIds.has(id)));
   const collapsedGroupForTable = new Map(collapsedSchemaGroups.flatMap((group) => group.tableIds.map((tableId) => [tableId, group] as const)));
   const visibleSchemaNodes: Node[] = [
-    ...matchingSchemaNodes.filter((node) => !collapsedGroupForTable.has(node.id)).map((node) => ({ ...node, data: { ...node.data, groupName: schemaGroups.find((group) => group.tableIds.includes(node.id))?.name, groupColor: schemaGroups.find((group) => group.tableIds.includes(node.id))?.color } })),
+    ...matchingSchemaNodes.filter((node) => !collapsedGroupForTable.has(node.id)).map((node) => {
+      const data = node.data as TableNodeData;
+      return { ...node, data: { ...node.data, tableNote: schemaNotes.tables[node.id], columns: data.columns.map((column) => ({ ...column, note: schemaNotes.columns[schemaColumnNoteKey(node.id, column.name)] })), groupName: schemaGroups.find((group) => group.tableIds.includes(node.id))?.name, groupColor: schemaGroups.find((group) => group.tableIds.includes(node.id))?.color } };
+    }),
     ...collapsedSchemaGroups.map((group) => {
       const members = matchingSchemaNodes.filter((node) => group.tableIds.includes(node.id));
       const position = members.length ? { x: members.reduce((total, node) => total + node.position.x, 0) / members.length, y: members.reduce((total, node) => total + node.position.y, 0) / members.length } : { x: 0, y: 0 };
@@ -343,6 +561,14 @@ function App() {
     return [{ ...edge, source: sourceGroup ? `group:${sourceGroup.id}` : edge.source, target: targetGroup ? `group:${targetGroup.id}` : edge.target }];
   });
   const selectedRelationship = selectedRelationshipId ? edges.find((edge) => edge.id === selectedRelationshipId) : undefined;
+  const impactPaths = impactTableId ? collectTableImpact(impactTableId, impactDirection, edges) : [];
+  const displayTableName = (tableId: string) => {
+    const table = liveSchema?.tables.find((item) => schemaTableId(item.schema, item.name) === tableId);
+    if (table) return `${table.schema}.${table.name}`;
+    const data = nodes.find((node) => node.id === tableId)?.data as { label?: string; subtitle?: string } | undefined;
+    const schema = (data?.subtitle ?? 'public · table').split('·')[0].trim();
+    return `${schema}.${data?.label ?? tableId}`;
+  };
   const schemaReviewWarnings = liveSchema ? (() => {
     const tableIds = new Set(liveSchema.tables.map((table) => schemaTableId(table.schema, table.name)));
     const relatedTableIds = new Set(edges.flatMap((edge) => [edge.source, edge.target]));
@@ -355,7 +581,14 @@ function App() {
   const schemaOverviewTables = liveSchema?.tables ?? nodes.map((node) => ({ columns: (node.data as { columns?: unknown[] }).columns ?? [] }));
   const schemaOverviewColumnCount = schemaOverviewTables.reduce((total, table) => total + table.columns.length, 0);
   const schemaOverviewRelationshipCount = liveSchema ? liveSchema.tables.reduce((total, table) => total + table.foreignKeys.length, 0) : edges.length;
-  const selectedRelationshipForeignKeys = selectedRelationship && liveSchema ? liveSchema.tables.flatMap((table) => table.foreignKeys.filter((foreignKey) => schemaTableId(foreignKey.referencedSchema, foreignKey.referencedTable) === selectedRelationship.source && schemaTableId(table.schema, table.name) === selectedRelationship.target).map((foreignKey) => ({ ...foreignKey, referencingSchema: table.schema, referencingTable: table.name }))) : [];
+  const selectedRelationshipData = selectedRelationship?.data as { cardinality?: string; cardinalityLabel?: string; relationshipKind?: string; junctionTableId?: string } | undefined;
+  const selectedRelationshipForeignKeys = selectedRelationship && liveSchema ? selectedRelationshipData?.relationshipKind === 'junction'
+    ? (() => { const junction = liveSchema.tables.find((table) => schemaTableId(table.schema, table.name) === selectedRelationshipData.junctionTableId); return junction ? junction.foreignKeys.filter((foreignKey) => [selectedRelationship.source, selectedRelationship.target].includes(schemaTableId(foreignKey.referencedSchema, foreignKey.referencedTable))).map((foreignKey) => ({ ...foreignKey, referencingSchema: junction.schema, referencingTable: junction.name })) : []; })()
+    : liveSchema.tables.flatMap((table) => table.foreignKeys.filter((foreignKey) => schemaTableId(foreignKey.referencedSchema, foreignKey.referencedTable) === selectedRelationship.source && schemaTableId(table.schema, table.name) === selectedRelationship.target).map((foreignKey) => ({ ...foreignKey, referencingSchema: table.schema, referencingTable: table.name }))) : [];
+  const selectedRelationshipSummary = selectedRelationshipData?.relationshipKind === 'junction'
+    ? `Many-to-many via ${displayTableName(selectedRelationshipData.junctionTableId ?? '')}`
+    : selectedRelationshipData?.cardinality === 'one-to-one' ? 'One-to-one relationship'
+      : selectedRelationshipData?.cardinality === 'one-to-many' ? 'One-to-many relationship' : `${selectedRelationshipForeignKeys.length} foreign-key mapping${selectedRelationshipForeignKeys.length === 1 ? '' : 's'}`;
   useEffect(() => {
     if (!liveSchema || !schemaFlow) return;
     const timer = window.setTimeout(() => { void schemaFlow.fitView({ padding: 0.12 }); }, 120);
@@ -378,13 +611,15 @@ function App() {
     }
   }, [liveSchema, schemaGroupScope]);
   const onEdgesChange = useCallback((changes: any[]) => setEdges((eds) => eds.filter((edge) => !changes.some((change) => change.id === edge.id && change.type === 'remove'))), []);
-  const colDefs = useMemo(() => [
-    { field: 'id', headerName: 'ORDER ID', minWidth: 140, flex: 1, cellClass: 'mono-cell' },
-    { field: 'user_id', headerName: 'USER ID', minWidth: 130, flex: 1, cellClass: 'mono-cell' },
-    { field: 'total', headerName: 'TOTAL', minWidth: 100, flex: 0.8, valueFormatter: (p: any) => `$${Number(p.value).toFixed(2)}` },
-    { field: 'status', headerName: 'STATUS', minWidth: 125, flex: 0.9, cellRenderer: (p: any) => <span className={`status-pill ${p.value}`}>{p.value}</span> },
-    { field: 'created_at', headerName: 'CREATED AT', minWidth: 180, flex: 1.2, cellClass: 'mono-cell' },
-  ], []);
+  const demoRows = sampleRowsByTable[activeTable] ?? sampleRows;
+  const demoColDefs = useMemo(() => Object.keys(sampleRowsByTable[activeTable]?.[0] ?? {}).map((field) => ({
+    field,
+    headerName: field.replaceAll('_', ' ').toUpperCase(),
+    minWidth: 130,
+    flex: 1,
+    cellClass: field === 'id' || field.endsWith('_id') || field.endsWith('_at') ? 'mono-cell' : undefined,
+    ...(field === 'status' ? { cellRenderer: (params: any) => <span className={`status-pill ${params.value}`}>{params.value}</span> } : {}),
+  })), [activeTable]);
   const liveRecordTable = liveRecords && liveSchema?.tables.find((table) => table.schema === liveRecords.schema && table.name === liveRecords.table);
   const livePrimaryKeyColumns = liveRecordTable?.columns.filter((column) => column.key === 'pk' || column.key === 'pk-fk') ?? [];
   const liveDeleteSupported = Boolean(selectedLiveRow && livePrimaryKeyColumns.length && Object.values(selectedLiveRow).every((value) => value === null || typeof value === 'string' || typeof value === 'boolean' || (typeof value === 'number' && Number.isFinite(value))));
@@ -402,7 +637,7 @@ function App() {
     flex: 1,
     cellClass: 'mono-cell',
   })) ?? [], [sqlResult]);
-  const demoFilteredRows = sampleRows.filter((row) => Object.values(row).some((value) => String(value).toLowerCase().includes(searchText.toLowerCase())));
+  const demoFilteredRows = demoRows.filter((row) => Object.values(row).some((value) => String(value).toLowerCase().includes(searchText.toLowerCase())));
   const liveFilteredRows = liveRecords?.rows ?? [];
 
   const navItems: { key: Section; label: string; icon: any; group: string }[] = [
@@ -410,9 +645,83 @@ function App() {
     { key: 'schema', label: 'Schema designer', icon: GitBranch, group: 'WORKSPACE' },
     { key: 'data', label: 'Data explorer', icon: Table2, group: 'WORKSPACE' },
     { key: 'sql', label: 'SQL workspace', icon: TerminalSquare, group: 'WORKSPACE' },
+    { key: 'builder', label: 'Query builder', icon: Sparkles, group: 'WORKSPACE' },
+    { key: 'analytics', label: 'Analytics', icon: Activity, group: 'WORKSPACE' },
+    { key: 'copilot', label: 'DBFlow Copilot', icon: Bot, group: 'WORKSPACE' },
     { key: 'learning', label: 'Learn databases', icon: GraduationCap, group: 'LEARN' },
   ];
-  const title = ({ overview: 'Overview', schema: 'Schema designer', data: 'Data explorer', sql: 'SQL workspace', learning: 'Learn databases' } as Record<Section, string>)[section];
+  const title = ({
+    overview: 'Overview',
+    schema: 'Schema designer',
+    data: 'Data explorer',
+    sql: 'SQL workspace',
+    builder: 'Visual query builder',
+    analytics: 'Analytics dashboard',
+    copilot: 'DBFlow Copilot',
+    learning: 'Learn databases'
+  } as Record<Section, string>)[section];
+
+  const explorerTables: ExplorerTable[] = useMemo(() => {
+    if (liveSchema) {
+      return liveSchema.tables.map((t) => ({
+        schema: t.schema,
+        name: t.name,
+        columns: t.columns.map((c) => ({
+          name: c.name,
+          type: c.type,
+          key: c.key,
+          nullable: c.nullable,
+          identity: c.identity,
+          hasDefault: c.hasDefault,
+          unique: c.unique
+        }))
+      }));
+    }
+    return initialNodes.map((n) => {
+      const d = n.data as TableNodeData;
+      return {
+        schema: 'public',
+        name: d.label,
+        columns: d.columns.map((c) => ({
+          name: c.name,
+          type: c.type,
+          key: c.key,
+          nullable: c.nullable,
+          identity: c.identity,
+          hasDefault: c.hasDefault,
+          unique: c.unique
+        }))
+      };
+    });
+  }, [liveSchema, initialNodes]);
+
+  const queryBuilderTables: QueryBuilderTable[] = useMemo(() => {
+    if (liveSchema) {
+      return liveSchema.tables.map((t) => ({
+        schema: t.schema,
+        name: t.name,
+        columns: t.columns.map((c) => ({
+          name: c.name,
+          type: c.type,
+          key: c.key
+        })),
+        foreignKeys: t.foreignKeys
+      }));
+    }
+    return initialNodes.map((n) => {
+      const d = n.data as TableNodeData;
+      return {
+        schema: 'public',
+        name: d.label,
+        columns: d.columns.map((c) => ({
+          name: c.name,
+          type: c.type,
+          key: c.key
+        })),
+        foreignKeys: d.foreignKeys
+      };
+    });
+  }, [liveSchema, initialNodes]);
   const runQuery = async () => {
     setSqlError('');
     if (!liveConnectionId || !liveSchema) {
@@ -495,6 +804,8 @@ function App() {
     setSchemaRefreshTarget(null);
     setSchemaGroupScope(demoScope);
     setSchemaGroups(loadSchemaGroups(demoScope));
+    setSchemaNotes(loadSchemaNotes(demoScope));
+    setSchemaNoteTarget(null);
     setSchemaChangePlan([]);
     setShowSchemaChangePlan(false);
     setLiveRecords(null);
@@ -689,6 +1000,40 @@ function App() {
     const table = tableForMenu(tableId); const engine = liveSchema?.engine ?? 'postgres';
     void navigator.clipboard.writeText(`${quoteSqlIdentifier(table.schema, engine)}.${quoteSqlIdentifier(table.name, engine)}`).then(() => notify('Qualified table name copied')).catch(() => notify('Could not copy the table name.'));
   };
+  const editSchemaNote = (tableId: string, columnName?: string) => setSchemaNoteTarget({ tableId, ...(columnName ? { columnName } : {}) });
+  const saveSchemaNote = (note: string) => {
+    if (!schemaNoteTarget) return;
+    const cleanNote = note.trim();
+    if (schemaNoteTarget.columnName) {
+      const key = schemaColumnNoteKey(schemaNoteTarget.tableId, schemaNoteTarget.columnName);
+      setSchemaNotes((current) => {
+        const columns = { ...current.columns };
+        if (cleanNote) columns[key] = cleanNote;
+        else delete columns[key];
+        return { ...current, columns };
+      });
+    } else {
+      setSchemaNotes((current) => {
+        const tables = { ...current.tables };
+        if (cleanNote) tables[schemaNoteTarget.tableId] = cleanNote;
+        else delete tables[schemaNoteTarget.tableId];
+        return { ...current, tables };
+      });
+    }
+  };
+  const analyzeTableImpact = (tableId: string) => {
+    setImpactTableId(tableId);
+    setImpactDirection('referencing');
+    setSelectedRelationshipId(null);
+  };
+  const focusImpactTable = (tableId: string) => {
+    setActiveTable(tableId);
+    setSchemaSearch('');
+    setSchemaFilter('all');
+    setSchemaGroups((current) => current.map((group) => group.tableIds.includes(tableId) ? { ...group, collapsed: false } : group));
+    const node = nodes.find((item) => item.id === tableId);
+    if (node) window.setTimeout(() => { void schemaFlow?.fitView({ nodes: [node], padding: 0.72, duration: 350 }); }, 100);
+  };
   const autoArrangeSchema = (message = 'Tables arranged by their relationships') => {
     const tables = liveSchema?.tables ?? nodes.map((node) => {
       const data = node.data as { label?: string; subtitle?: string; columns?: Array<unknown>; foreignKeys?: TableNodeData['foreignKeys'] };
@@ -758,6 +1103,8 @@ function App() {
       const groupScope = schemaConnectionScope(connectionEngine, connectionForm);
       const graph = makeSchemaGraph(schema, loadSchemaLayout(groupScope, legacyScope));
       setSchemaGroupScope(groupScope);
+      setSchemaNotes(loadSchemaNotes(groupScope));
+      setSchemaNoteTarget(null);
       setSchemaGroups(loadSchemaGroups(groupScope, legacyScope).map((group) => ({ ...group, tableIds: group.tableIds.filter((id) => schema.tables.some((table) => schemaTableId(table.schema, table.name) === id)) })));
       setLiveSchema(schema);
       setLiveConnectionId(connectionId);
@@ -839,6 +1186,14 @@ function App() {
     }, 250);
     return () => window.clearTimeout(timer);
   }, [searchText, recordsBusy]);
+
+  // Auto-hydrate records when navigating to data explorer with a connected database
+  useEffect(() => {
+    if (section === 'data' && liveSchema && liveSchema.tables.length > 0 && !liveRecords && !recordsBusy) {
+      const firstTable = liveSchema.tables[0];
+      void loadLiveRecords(firstTable.schema, firstTable.name, 0);
+    }
+  }, [section, liveSchema, liveRecords, recordsBusy]);
   const refreshAfterInsert = async () => {
     if (!liveRecords) return;
     setSearchText('');
@@ -871,8 +1226,8 @@ function App() {
         <div className="schema-review-metrics"><div><strong>{schemaOverviewTables.length}</strong><span>Tables</span></div><div><strong>{schemaOverviewColumnCount}</strong><span>Columns</span></div><div><strong>{schemaOverviewRelationshipCount}</strong><span>Foreign keys</span></div><div className={schemaReviewWarnings.length ? 'has-warnings' : 'is-clear'}><strong>{schemaReviewWarnings.length}</strong><span>Review items</span></div></div>
         {schemaReviewWarnings.length > 0 && <div className="schema-review-warnings" role="status"><AlertTriangle size={14}/><div><strong>{schemaReviewWarnings.length} items to review</strong><span>{schemaReviewWarnings.slice(0, 3).map((warning) => `${warning.kind}: ${warning.table}`).join(' · ')}{schemaReviewWarnings.length > 3 ? ` · +${schemaReviewWarnings.length - 3} more` : ''}</span></div></div>}
       </section>
-      <div className="schema-map-legend" role="group" aria-label="Schema map legend"><span><KeyRound size={11}/> Primary key</span><span><Link2 size={11}/> Foreign key</span><span><span className="legend-line"/> Relationship</span></div>
-      <div className="schema-canvas"><TableMenuContext.Provider value={{ openData: openTableDataFromMenu, openSql: openTableSqlFromMenu, copyName: copyTableNameFromMenu, deleteTable: requestTableDeletion }}><TableGroupContext.Provider value={{ groups: schemaGroups, assign: assignTableGroup }}><GroupToggleContext.Provider value={toggleSchemaGroup}><ColumnSelectionContext.Provider value={selectSchemaColumn}><EdgeSelectionContext.Provider value={setSelectedRelationshipId}><ReactFlow nodes={visibleSchemaNodes} edges={visibleSchemaEdges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} onEdgeClick={(_event, edge) => setSelectedRelationshipId(edge.id)} onPaneClick={() => setSelectedRelationshipId(null)} onNodeClick={(event, node) => { if (node.type === 'tableGroup') { toggleSchemaGroup(node.id.replace(/^group:/, '')); return; } setSelectedRelationshipId(null); setActiveTable(node.id); if (!(event.target instanceof Element) || !event.target.closest('.node-column')) { setSelectedColumn(null); setEditingColumn(false); setNodes((current) => current.map((item) => ({ ...item, data: { ...item.data, selectedColumn: '' } }))); } }} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={beginRelationship} isValidConnection={(connection) => Boolean(liveSchema?.engine === 'postgres' && connection.source && connection.target && connection.source !== connection.target)} onInit={(instance) => { setSchemaFlow(instance); window.setTimeout(() => { void instance.fitView({ padding: 0.12 }); }, 120); }} fitView fitViewOptions={{ padding: 0.12 }} minZoom={0.3} maxZoom={1.6}><Background color="#d7dee8" gap={24} size={1}/><Controls showInteractive={false}/></ReactFlow></EdgeSelectionContext.Provider></ColumnSelectionContext.Provider></GroupToggleContext.Provider></TableGroupContext.Provider></TableMenuContext.Provider>{liveSchema?.tables.length === 0 && <div className="schema-empty-state"><strong>No visible tables found</strong><span>This account can connect, but no base tables were returned from the accessible schemas.</span></div>}{visibleSchemaNodes.length === 0 && nodes.length > 0 && <div className="schema-empty-state"><strong>No matching tables</strong><span>Adjust the search or choose a different relationship filter.</span><button className="button button-quiet" onClick={() => { setSchemaSearch(''); setSchemaFilter('all'); }}>Clear filters</button></div>}{selectedRelationship && <aside className="relationship-inspector" aria-label="Relationship details"><div className="relationship-inspector-heading"><div><span className="eyebrow">FOREIGN KEY RELATIONSHIP</span><strong>{selectedRelationshipForeignKeys.length} mapping{selectedRelationshipForeignKeys.length === 1 ? '' : 's'}</strong></div><button className="icon-button" aria-label="Close relationship details" onClick={() => setSelectedRelationshipId(null)}><X size={15}/></button></div>{selectedRelationshipForeignKeys.length ? <ul>{selectedRelationshipForeignKeys.map((foreignKey, index) => <li key={`${foreignKey.referencingSchema}.${foreignKey.referencingTable}.${foreignKey.column}-${index}`}><strong>{foreignKey.referencingSchema}.{foreignKey.referencingTable}</strong><span>{foreignKey.column} <ArrowRight size={12}/> {foreignKey.referencedSchema}.{foreignKey.referencedTable}.{foreignKey.referencedColumn}</span><small>On delete: {foreignKey.onDelete ?? 'Unknown'} · On update: {foreignKey.onUpdate ?? 'Unknown'}</small></li>)}</ul> : <p>Select a live relationship to inspect its foreign-key columns.</p>}</aside>}<div className="canvas-tip"><Grip size={13}/>{liveSchema?.engine === 'postgres' ? 'Drag a table dot to another table to create a relationship · click a relationship to inspect' : 'Drag nodes to rearrange'}</div></div>
+      <div className="schema-map-legend" role="group" aria-label="Schema map legend"><span><KeyRound size={11}/> Primary key</span><span><Link2 size={11}/> Foreign key</span><span><span className="legend-line"/> Relationship</span><span><strong className="cardinality-key">1 : 1</strong> One-to-one</span><span><strong className="cardinality-key">1 : N</strong> One-to-many</span><span><strong className="cardinality-key many">M : N</strong> Many-to-many</span></div>
+      <div className="schema-canvas"><TableMenuContext.Provider value={{ openData: openTableDataFromMenu, openSql: openTableSqlFromMenu, copyName: copyTableNameFromMenu, analyzeImpact: analyzeTableImpact, editNote: editSchemaNote, deleteTable: requestTableDeletion }}><TableGroupContext.Provider value={{ groups: schemaGroups, assign: assignTableGroup }}><GroupToggleContext.Provider value={toggleSchemaGroup}><ColumnSelectionContext.Provider value={selectSchemaColumn}><EdgeSelectionContext.Provider value={setSelectedRelationshipId}><ReactFlow nodes={visibleSchemaNodes} edges={visibleSchemaEdges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} onEdgeClick={(_event, edge) => { setImpactTableId(null); setSelectedRelationshipId(edge.id); }} onPaneClick={() => { setImpactTableId(null); setSelectedRelationshipId(null); }} onNodeClick={(event, node) => { if (node.type === 'tableGroup') { toggleSchemaGroup(node.id.replace(/^group:/, '')); return; } setSelectedRelationshipId(null); setImpactTableId(null); setActiveTable(node.id); if (!(event.target instanceof Element) || !event.target.closest('.node-column')) { setSelectedColumn(null); setEditingColumn(false); setNodes((current) => current.map((item) => ({ ...item, data: { ...item.data, selectedColumn: '' } }))); } }} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={beginRelationship} isValidConnection={(connection) => Boolean(liveSchema?.engine === 'postgres' && connection.source && connection.target && connection.source !== connection.target)} onInit={(instance) => { setSchemaFlow(instance); window.setTimeout(() => { void instance.fitView({ padding: 0.12 }); }, 120); }} fitView fitViewOptions={{ padding: 0.12 }} minZoom={0.3} maxZoom={1.6}><Background color="#d7dee8" gap={24} size={1}/><Controls showInteractive={false}/></ReactFlow></EdgeSelectionContext.Provider></ColumnSelectionContext.Provider></GroupToggleContext.Provider></TableGroupContext.Provider></TableMenuContext.Provider>{liveSchema?.tables.length === 0 && <div className="schema-empty-state"><strong>No visible tables found</strong><span>This account can connect, but no base tables were returned from the accessible schemas.</span></div>}{visibleSchemaNodes.length === 0 && nodes.length > 0 && <div className="schema-empty-state"><strong>No matching tables</strong><span>Adjust the search or choose a different relationship filter.</span><button className="button button-quiet" onClick={() => { setSchemaSearch(''); setSchemaFilter('all'); }}>Clear filters</button></div>}{selectedRelationship && <aside className="relationship-inspector" aria-label="Relationship details"><div className="relationship-inspector-heading"><div><span className="eyebrow">RELATIONSHIP CARDINALITY</span><strong>{selectedRelationshipSummary}</strong><small>{selectedRelationshipForeignKeys.length} foreign-key mapping{selectedRelationshipForeignKeys.length === 1 ? '' : 's'}</small></div><button className="icon-button" aria-label="Close relationship details" onClick={() => setSelectedRelationshipId(null)}><X size={15}/></button></div>{selectedRelationshipForeignKeys.length ? <ul>{selectedRelationshipForeignKeys.map((foreignKey, index) => <li key={`${foreignKey.referencingSchema}.${foreignKey.referencingTable}.${foreignKey.column}-${index}`}><strong>{foreignKey.referencingSchema}.{foreignKey.referencingTable}</strong><span>{foreignKey.column} <ArrowRight size={12}/> {foreignKey.referencedSchema}.{foreignKey.referencedTable}.{foreignKey.referencedColumn}</span><small>On delete: {foreignKey.onDelete ?? 'Unknown'} · On update: {foreignKey.onUpdate ?? 'Unknown'}</small></li>)}</ul> : <p>Select a live relationship to inspect its foreign-key columns.</p>}</aside>}{impactTableId && <aside className="relationship-inspector impact-inspector" aria-label="Table impact analysis"><div className="relationship-inspector-heading"><div><span className="eyebrow">IMPACT ANALYSIS</span><strong>{displayTableName(impactTableId)}</strong></div><button className="icon-button" aria-label="Close impact analysis" onClick={() => setImpactTableId(null)}><X size={15}/></button></div><p className="impact-intro">Follow foreign-key paths to understand what this table relies on and what relies on it.</p><div className="impact-direction" role="group" aria-label="Impact direction"><button type="button" className={impactDirection === 'referencing' ? 'active' : ''} aria-pressed={impactDirection === 'referencing'} onClick={() => setImpactDirection('referencing')}>Referenced by</button><button type="button" className={impactDirection === 'referenced' ? 'active' : ''} aria-pressed={impactDirection === 'referenced'} onClick={() => setImpactDirection('referenced')}>Depends on</button></div><div className="impact-result-heading"><strong>{impactPaths.length} connected table{impactPaths.length === 1 ? '' : 's'}</strong><span>Direct and indirect paths</span></div>{impactPaths.length ? <ol className="impact-path-list">{impactPaths.map(({ tableId, path }) => { const pathIds = [impactTableId, ...path.map((edge) => impactDirection === 'referencing' ? edge.target : edge.source)]; return <li key={tableId}><div><button className="impact-path-target" onClick={() => focusImpactTable(tableId)} title="Focus this table in the diagram">{displayTableName(tableId)}</button><span className="impact-depth">{path.length === 1 ? 'Direct' : `${path.length} hops`}</span></div><span className="impact-path-chain">{pathIds.map(displayTableName).join(' → ')}</span><small>{path.map((edge) => String(edge.label ?? 'Foreign key relationship')).join(' · ')}</small></li>; })}</ol> : <p className="impact-empty">No tables are connected in this direction.</p>}</aside>}<div className="canvas-tip"><Grip size={13}/>{liveSchema?.engine === 'postgres' ? 'Drag a table dot to another table to create a relationship · click a relationship to inspect' : 'Drag nodes to rearrange'}</div></div>
       <div ref={columnInspectorRef} className={`bottom-inspector${selectedLiveColumn ? ' has-selected-column' : ''}`}>
         <div className="inspector-overview">
           <div className="inspector-title"><div className="table-icon small"><Table2 size={13}/></div><div><strong>{selectedLiveTable ? `${selectedLiveTable.schema}.${selectedLiveTable.name}` : liveSchema ? 'No table selected' : activeTable}</strong><span>{selectedLiveColumn ? `Selected column · ${selectedLiveColumn.type}` : liveSchema ? `${liveSchema.engine === 'postgres' ? 'PostgreSQL' : 'MySQL'} catalog metadata` : 'Selected table · public schema'}</span></div></div>
@@ -880,37 +1235,89 @@ function App() {
           <div className="inspector-actions">{liveSchema && selectedLiveTable && <button className="button button-quiet" onClick={openAddColumnForSelectedTable}><Plus size={14}/> Add column</button>}<button className="button button-quiet" onClick={() => selectedLiveTable ? void loadLiveRecords(selectedLiveTable.schema, selectedLiveTable.name, 0) : setSection('data')}><Eye size={14}/> {liveSchema ? 'View live records' : 'View records'} <ArrowRight size={14}/></button></div>
         </div>
         {selectedLiveColumn && selectedLiveTable && <section className="column-properties-panel" aria-label="Selected column properties">
-          <div className="column-properties-heading"><div><span className="eyebrow">SELECTED COLUMN</span><strong>{selectedLiveColumn.name}</strong><code>{selectedLiveColumn.type}</code></div><div className="column-property-chips"><span>{selectedLiveColumn.nullable === false ? 'Required' : selectedLiveColumn.nullable === true ? 'Nullable' : 'Nullability unknown'}</span><span>{selectedLiveColumn.hasDefault === true ? 'Default configured' : selectedLiveColumn.hasDefault === false ? 'No default' : 'Default unknown'}</span><span>{selectedLiveColumn.key === 'pk' || selectedLiveColumn.key === 'pk-fk' ? 'Primary key' : selectedLiveColumn.key === 'fk' ? 'Foreign key' : selectedLiveColumn.unique ? 'Unique' : 'No key'}</span></div><div className="column-property-actions">{liveSchema?.engine === 'postgres' && <button className="button button-quiet" onClick={beginColumnEdit}>Edit column</button>}</div></div>
+          <div className="column-properties-heading"><div><span className="eyebrow">SELECTED COLUMN</span><strong>{selectedLiveColumn.name}</strong><code>{selectedLiveColumn.type}</code></div><div className="column-property-chips"><span>{selectedLiveColumn.nullable === false ? 'Required' : selectedLiveColumn.nullable === true ? 'Nullable' : 'Nullability unknown'}</span><span>{selectedLiveColumn.hasDefault === true ? 'Default configured' : selectedLiveColumn.hasDefault === false ? 'No default' : 'Default unknown'}</span><span>{selectedLiveColumn.key === 'pk' || selectedLiveColumn.key === 'pk-fk' ? 'Primary key' : selectedLiveColumn.key === 'fk' ? 'Foreign key' : selectedLiveColumn.unique ? 'Unique' : 'No key'}</span></div><div className="column-property-actions"><button className="button button-quiet" onClick={() => editSchemaNote(activeTable, selectedLiveColumn.name)}><MessageSquareText size={14}/>{selectedLiveColumnNote ? 'Edit note' : 'Add note'}</button>{liveSchema?.engine === 'postgres' && <button className="button button-quiet" onClick={beginColumnEdit}>Edit column</button>}</div></div>
+          <div className="column-description"><span>Description</span><p>{selectedLiveColumnNote || 'No description added yet.'}</p></div>
           {editingColumn && liveSchema?.engine === 'postgres' && <form className="column-edit-form" onSubmit={(event) => { event.preventDefault(); reviewColumnEdit(); }}><label>Property<select value={columnEditProperty} onChange={(event) => setColumnEditProperty(event.target.value as 'nullability' | 'default')}><option value="nullability">Nullability</option><option value="default">Default</option></select></label>{columnEditProperty === 'nullability' ? <label>Allow NULL<select value={columnNullableValue ? 'yes' : 'no'} onChange={(event) => setColumnNullableValue(event.target.value === 'yes')}><option value="yes">Yes · allow NULL values</option><option value="no">No · require a value</option></select></label> : <><label>Default action<select value={columnDefaultAction} onChange={(event) => setColumnDefaultAction(event.target.value as 'set' | 'remove')}><option value="set">Set a default</option><option value="remove">Remove the default</option></select></label>{columnDefaultAction === 'set' && <label className="column-default-field">Default value<input value={columnDefaultValue} onChange={(event) => setColumnDefaultValue(event.target.value)} placeholder="Text, 0, TRUE, CURRENT_TIMESTAMP…"/><small>Text is quoted automatically. Supported expressions are validated before review.</small></label>}</>}<div className="column-edit-actions"><button className="button button-primary" type="submit">Review change</button><button className="button button-quiet" type="button" onClick={() => setEditingColumn(false)}>Cancel</button></div></form>}
+        </section>}
+        {selectedDemoColumn && selectedColumn && <section className="column-properties-panel demo-column-properties" aria-label="Selected column description">
+          <div className="column-properties-heading"><div><span className="eyebrow">SELECTED COLUMN</span><strong>{selectedDemoColumn.name}</strong><code>{selectedDemoColumn.type}</code></div><div className="column-property-actions"><button className="button button-quiet" onClick={() => editSchemaNote(selectedColumn.tableId, selectedColumn.name)}><MessageSquareText size={14}/>{selectedLiveColumnNote ? 'Edit note' : 'Add note'}</button></div></div>
+          <div className="column-description"><span>Description</span><p>{selectedLiveColumnNote || 'No description added yet.'}</p></div>
         </section>}
       </div>
     </>;
-    if (section === 'data') return <>
-      <div className="page-heading"><div><div className="eyebrow">{liveRecords ? 'LIVE TABLE' : 'EXPLORE YOUR DATA'}</div><h1>{liveRecords ? liveRecords.table : 'Data explorer'}</h1><p>{liveRecords ? `Records from ${liveRecords.schema}.${liveRecords.table}. Showing up to ${liveRecords.pageSize} rows per page.` : 'Inspect records in a familiar grid. This preview uses sample data, not a live database.'}</p></div><div className="heading-actions">{liveRecords ? <><span className="read-only-label"><LockKeyhole size={12}/> {liveSchema?.engine === 'mysql' ? 'MySQL' : 'PostgreSQL'} · {livePrimaryKeyColumns.length ? 'reviewed row changes' : 'insert only · no primary key'}</span><button className="button button-quiet" onClick={() => setSection('schema')}><GitBranch size={14}/> Back to schema</button></> : <span className="read-only-label"><Eye size={12}/> Demo data · read only</span>}</div></div>
-      <div className="data-toolbar"><div className="table-select"><Table2 size={15}/>{liveSchema && liveRecords ? <select aria-label="Select table to browse" value={schemaTableId(liveRecords.schema, liveRecords.table)} disabled={recordsBusy} onChange={(event) => { const table = liveSchema.tables.find((item) => schemaTableId(item.schema, item.name) === event.target.value); if (table) void loadLiveRecords(table.schema, table.name, 0); }}>{liveSchema.tables.map((table) => <option key={schemaTableId(table.schema, table.name)} value={schemaTableId(table.schema, table.name)}>{table.schema}.{table.name}</option>)}</select> : <strong>{liveRecords ? `${liveRecords.schema}.${liveRecords.table}` : activeTable}</strong>}</div><div className="search-box"><Search size={14}/><input type="search" name={liveRecords ? 'record-search' : 'sample-search'} autoComplete="off" maxLength={200} aria-label={liveRecords ? 'Search all records in this table' : 'Search sample records'} value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder={liveRecords ? 'Search all rows…' : 'Search sample records…'}/></div>{liveRecords && <div className="record-actions"><button className="button button-quiet" onClick={() => setShowInsertRecord(true)} disabled={recordsBusy}><Plus size={14}/> Add row</button><button className="button button-quiet" onClick={() => setShowEditRecord(true)} disabled={!selectedLiveRow || !livePrimaryKeyColumns.length || recordsBusy}><Check size={14}/> Edit row</button><button className="button button-danger-quiet" onClick={() => setShowDeleteRecord(true)} disabled={!liveDeleteSupported || recordsBusy} title={!livePrimaryKeyColumns.length ? 'A primary key is required' : !liveDeleteSupported && selectedLiveRow ? 'This row contains values that cannot be compared safely' : 'Select a row to delete'}><Trash2 size={14}/> Delete row</button></div>}</div>
-      {recordsError && liveRecords && <div className="record-alert" role="alert"><span>{recordsError}</span><button className="button button-quiet" onClick={() => {
-        if (recordsError.startsWith('That table is no longer visible')) { setSection('schema'); void refreshLiveSchema(); }
-        else void loadLiveRecords(liveRecords.schema, liveRecords.table, liveRecords.page, liveRecords.pageSize, liveSort, searchText);
-      }} disabled={recordsBusy || schemaRefreshBusy}>{recordsError.startsWith('That table is no longer visible') ? 'Refresh schema' : 'Retry records'}</button></div>}
-      {recordsBusy && liveRecords && <div className="record-loading" role="status" aria-live="polite">Loading records…</div>}
-      <div className={`grid-wrap${recordsError || recordsBusy ? ' grid-wrap-suppress-empty-overlay' : ''}`}><div className="ag-theme-quartz custom-grid"><AgGridReact rowData={liveRecords ? liveFilteredRows : demoFilteredRows} columnDefs={(liveRecords ? liveColDefs : colDefs) as any} defaultColDef={{ sortable: true, resizable: true }} onSortChanged={(event) => {
-        if (!liveRecords || recordsBusy) return;
-        const activeSort = event.api.getColumnState().find((column) => column.sort);
-        const nextSort: LiveRecordSort | null = activeSort?.sort ? { column: activeSort.colId, direction: activeSort.sort } : null;
-        if (JSON.stringify(nextSort) === JSON.stringify(liveSort)) return;
-        void loadLiveRecords(liveRecords.schema, liveRecords.table, 0, liveRecords.pageSize, nextSort);
-      }} rowSelection={liveRecords ? { mode: 'singleRow', checkboxes: false, enableClickSelection: true } : undefined} getRowId={(params) => livePrimaryKeyColumns.length ? JSON.stringify(livePrimaryKeyColumns.map((column) => params.data[column.name])) : JSON.stringify(Object.values(params.data))} onSelectionChanged={(event) => setSelectedLiveRow(liveRecords ? event.api.getSelectedRows()[0] ?? null : null)} rowHeight={47} headerHeight={42} animateRows={!liveRecords} suppressCellFocus={true} overlayNoRowsTemplate={liveRecords ? (searchText ? '<span>No rows match your search.</span>' : '<span>This table has no rows.</span>') : undefined}/></div></div>
-      {liveRecords ? <div className="grid-footer live-grid-footer"><span>Page <strong>{liveRecords.page + 1}</strong> · {liveRecords.rows.length} {searchText ? 'matching ' : ''}rows shown{liveSort ? ` · sorted by ${liveSort.column} ${liveSort.direction.toUpperCase()}` : ''}{searchText ? ' · search covers all table rows' : ''}</span><span className="pagination-controls"><label>Rows<select aria-label="Rows per page" value={liveRecords.pageSize} disabled={recordsBusy} onChange={(event) => void loadLiveRecords(liveRecords.schema, liveRecords.table, 0, Number(event.target.value))}><option value={10}>10</option><option value={25}>25</option><option value={50}>50</option><option value={100}>100</option></select></label><button className="button button-quiet" disabled={recordsBusy || liveRecords.page === 0} onClick={() => void loadLiveRecords(liveRecords.schema, liveRecords.table, liveRecords.page - 1, liveRecords.pageSize)}>Previous</button><button className="button button-quiet" disabled={recordsBusy || !liveRecords.hasMore} onClick={() => void loadLiveRecords(liveRecords.schema, liveRecords.table, liveRecords.page + 1, liveRecords.pageSize)}>Next</button></span></div> : <div className="grid-footer"><span>Showing <strong>{demoFilteredRows.length}</strong> sample records</span><span>Demo mode · Read only <span className="footer-dot"/></span></div>}
-    </>;
+    if (section === 'data') return (
+      <DataExplorerView
+        liveSchema={liveSchema}
+        liveRecords={liveRecords}
+        activeTable={activeTable}
+        recordsBusy={recordsBusy}
+        recordsError={recordsError}
+        liveSort={liveSort}
+        searchText={searchText}
+        setSearchText={setSearchText}
+        selectedLiveRow={selectedLiveRow}
+        setSelectedLiveRow={setSelectedLiveRow}
+        loadLiveRecords={loadLiveRecords}
+        onAddRow={() => setShowInsertRecord(true)}
+        onEditRow={() => setShowEditRecord(true)}
+        onDeleteRow={() => setShowDeleteRecord(true)}
+        onNavigateToSchema={(table) => {
+          setSection('schema');
+          if (table) {
+            const pureName = table.includes('.') ? table.split('.').pop()! : table;
+            const match = (liveSchema?.tables ?? initialNodes.map((n) => ({ schema: 'public', name: n.id }))).find(
+              (t) => t.name === pureName || `${t.schema}.${t.name}` === table
+            );
+            if (match) {
+              const targetId = liveSchema ? schemaTableId(match.schema, match.name) : match.name;
+              setActiveTable(targetId);
+              notify(`Located "${pureName}" on Schema Canvas`);
+            }
+          }
+        }}
+        onNavigateToSql={(query) => {
+          if (query) setSql(query);
+          setSection('sql');
+        }}
+        demoNodes={initialNodes as any}
+        demoRows={demoFilteredRows}
+        onRefreshSchema={refreshLiveSchema}
+        schemaRefreshBusy={schemaRefreshBusy}
+      />
+    );
     if (section === 'sql') return <>
       <div className="page-heading">
         <div>
           <div className="eyebrow">QUERY EDITOR</div>
           <h1>SQL workspace</h1>
-          <p>{liveConnectionId && liveSchema ? 'Run SELECT queries in a read-only transaction. Reuse recent queries from this tab, then run them again explicitly. Review a supported ADD COLUMN change separately. Query results are capped at 1,000 rows.' : 'Write SQL here, then preview clearly labeled sample rows. Recent queries stay in this tab so you can reuse them. No query is sent until a database is connected.'}</p>
+          <p>{liveConnectionId && liveSchema ? 'Run SELECT queries in a read-only transaction. Format code, reuse recent queries, or export results to CSV.' : 'Write SQL here, then preview clearly labeled sample rows. Recent queries stay in this tab so you can reuse them. No query is sent until a database is connected.'}</p>
         </div>
         <div className="heading-actions">
           <span className="read-only-label"><LockKeyhole size={12}/> {liveConnectionId && liveSchema ? `${liveSchema.engine === 'postgres' ? 'PostgreSQL' : 'MySQL'} · SELECT mode` : 'Demo connection'}</span>
+          <select
+            aria-label="Load demo query"
+            className="sql-demo-query-picker"
+            onChange={(e) => {
+              const q = DEMO_QUERIES.find((item) => item.id === e.target.value);
+              if (q) {
+                setSql(q.sql);
+                setSqlResult(null);
+                setSqlError('');
+              }
+            }}
+            defaultValue=""
+          >
+            <option value="" disabled>Load example query…</option>
+            {DEMO_QUERIES.map((q) => (
+              <option key={q.id} value={q.id}>{q.title}</option>
+            ))}
+          </select>
+          <button className="button button-quiet" onClick={() => setSql(formatSql(sql))} title="Format SQL query">
+            <Code2 size={14}/> Format SQL
+          </button>
+          <button className="button button-quiet" onClick={() => setSection('copilot')} title="Analyze & optimize query with DBFlow Copilot">
+            <Sparkles size={14} className="text-blue-600"/> Copilot AI
+          </button>
           {liveConnectionId && liveSchema && <button className="button button-quiet" onClick={() => openAddColumnReview(sql)} disabled={sqlBusy}>Review schema change</button>}
           <button className="button button-primary" onClick={() => void runQuery()} disabled={sqlBusy}>
             <Eye size={14}/>{sqlBusy ? 'Running query…' : liveConnectionId && liveSchema ? 'Run read-only query' : 'Preview demo rows'}
@@ -937,6 +1344,15 @@ function App() {
         <div className="results-panel">
           <div className="results-header">
             <div><span className="results-title">Results</span><span className="results-subtitle">{sqlResult ? `${sqlResult.rowCount} rows${sqlResult.source === 'database' ? ` · ${sqlResult.elapsedMs} ms` : ' · demo sample'}` : 'Query output appears here'}</span></div>
+            {sqlResult && sqlResult.rows.length > 0 && (
+              <button
+                className="button button-quiet text-xs py-1 px-3"
+                onClick={() => exportToCsv(sqlResult.columns, sqlResult.rows, 'dbflow_query_results.csv')}
+                title="Download CSV"
+              >
+                <Download size={13}/> Export CSV
+              </button>
+            )}
           </div>
           {sqlError && <div className="query-error" role="alert">{sqlError}</div>}
           {sqlBusy && <div className="query-loading" role="status" aria-live="polite">Running a read-only query…</div>}
@@ -957,12 +1373,57 @@ function App() {
         </div>
       </div>
     </>;
-    if (section === 'learning') return <>
-      <div className="page-heading"><div><div className="eyebrow">LEARN BY DOING</div><h1>Learn databases</h1><p>Build database intuition with visual, hands-on lessons. Learning modules are coming soon.</p></div><div className="heading-actions"><span className="read-only-label"><GraduationCap size={14}/> Beginner friendly</span></div></div><div className="learning-hero"><div className="learning-copy"><span className="learning-kicker"><Sparkles size={13}/> YOUR DATABASE JOURNEY</span><h2>Understand databases.<br/><span>Don't just memorize them.</span></h2><p>Explore relationships, experiment with SQL, and see how the pieces fit together — at your own pace.</p></div><div className="learning-graphic"><div className="learning-orbit orbit-one"/><div className="learning-orbit orbit-two"/><div className="learning-core"><Database size={38}/></div><div className="orbit-chip chip-one"><KeyRound size={15}/></div><div className="orbit-chip chip-two"><Link2 size={15}/></div><div className="orbit-chip chip-three"><Braces size={15}/></div></div></div><div className="lesson-grid"><div className="lesson-card"><div className="lesson-icon violet"><Table2 size={18}/></div><span className="lesson-level">LESSON 01 · 8 MIN</span><h3>Tables & columns</h3><p>Understand how databases organize information into structured records.</p><div className="lesson-progress"><span style={{ width: '0%' }}/></div><span className="lesson-bottom">Not started <ArrowRight size={13}/></span></div><div className="lesson-card"><div className="lesson-icon blue"><Link2 size={18}/></div><span className="lesson-level">LESSON 02 · 12 MIN</span><h3>Keys & relationships</h3><p>Connect tables and understand primary and foreign keys visually.</p><div className="lesson-progress"><span style={{ width: '0%' }}/></div><span className="lesson-bottom">Not started <ArrowRight size={13}/></span></div><div className="lesson-card"><div className="lesson-icon mint"><TerminalSquare size={18}/></div><span className="lesson-level">LESSON 03 · 15 MIN</span><h3>Your first SQL query</h3><p>Learn SELECT, WHERE, and ORDER BY using a safe demo database.</p><div className="lesson-progress"><span style={{ width: '0%' }}/></div><span className="lesson-bottom">Not started <ArrowRight size={13}/></span></div></div>
-    </>;
+    if (section === 'builder') return (
+      <VisualQueryBuilder
+        engine={liveSchema?.engine || 'postgres'}
+        tables={queryBuilderTables}
+        liveConnectionId={liveConnectionId}
+        onOpenInSqlWorkspace={(builtSql) => {
+          setSql(builtSql);
+          setSection('sql');
+        }}
+      />
+    );
+    if (section === 'analytics') return (
+      <AnalyticsDashboard
+        liveConnectionId={liveConnectionId}
+        liveSchema={liveSchema}
+      />
+    );
+    if (section === 'copilot') return (
+      <DatabaseCopilot
+        connectionId={liveConnectionId}
+        databaseName={liveSchema?.database ?? 'commerce_demo'}
+        engine={liveSchema?.engine ?? 'demo'}
+        onNavigateToSchema={(tableName) => {
+          setSection('schema');
+          if (tableName) {
+            const pureName = tableName.includes('.') ? tableName.split('.').pop()! : tableName;
+            const match = (liveSchema?.tables ?? initialNodes.map((n) => ({ schema: 'public', name: n.id }))).find(
+              (t) => t.name === pureName || `${t.schema}.${t.name}` === tableName
+            );
+            if (match) {
+              const targetId = liveSchema ? schemaTableId(match.schema, match.name) : match.name;
+              setActiveTable(targetId);
+              notify(`Located "${pureName}" on Schema Canvas`);
+              window.setTimeout(() => {
+                void schemaFlow?.fitView({ nodes: [{ id: targetId }], duration: 400, padding: 0.25 });
+              }, 150);
+            }
+          }
+        }}
+        onNavigateToSql={(query) => {
+          setSql(query);
+          setSection('sql');
+          notify('Loaded query into SQL workspace');
+        }}
+        onNotify={notify}
+      />
+    );
+    if (section === 'learning') return <LearningSection />;
     return <>
       <div className="page-heading"><div><div className="eyebrow">DATABASE WORKSPACE</div><h1>Explore your data</h1><p>Open the sample workspace or test a connection to your own database.</p></div><div className="heading-actions"><button className="button button-primary" onClick={() => setShowConnection(true)}><Plus size={15}/> Add connection</button></div></div>
-      <div className="overview-workspace"><section className="overview-environment"><span className="overview-section-label">ACTIVE ENVIRONMENT</span><div className="overview-name"><Database size={19}/><h2>{liveSchema?.database ?? 'commerce_demo'}</h2><span className="demo-badge">{liveSchema ? liveSchema.engine.toUpperCase() : 'DEMO'}</span></div><p>{liveSchema ? 'Live schema, records, and read-only SQL queries are available. Data-changing SQL remains disabled.' : 'Read-only sample data for exploring the interface.'}</p><div className="overview-details"><span><strong>{liveSchema?.tables.length ?? initialNodes.length}</strong> {liveSchema ? 'visible tables' : 'tables'}</span><span><strong>{liveSchema ? edges.length : initialEdges.length}</strong> relationships</span></div><div className="overview-actions"><button className="button button-primary" onClick={() => setSection('schema')}><GitBranch size={15}/> Open schema designer</button><button className="button button-quiet" onClick={() => setSection('data')}><Table2 size={15}/> Browse sample records</button></div></section><section className="overview-connect"><span className="overview-section-label">YOUR DATABASE</span><h2>{liveSchema ? 'Inspect another schema' : 'Connect PostgreSQL or MySQL'}</h2><p>{liveSchema ? 'The API keeps credentials in an expiring in-memory session; no profile is saved.' : 'Connect through the local API to inspect schemas and browse read-only records.'}</p><button className="text-button" onClick={() => setShowConnection(true)}>{liveSchema ? 'Inspect database' : 'Set up a connection'} <ArrowRight size={14}/></button></section></div>
+      <div className="overview-workspace"><section className="overview-environment"><span className="overview-section-label">{liveSchema ? 'ACTIVE ENVIRONMENT' : 'INTERACTIVE SAMPLE WORKSPACE'}</span><div className="overview-name"><Database size={19}/><h2>{liveSchema?.database ?? 'commerce_demo'}</h2><span className="demo-badge">{liveSchema ? liveSchema.engine.toUpperCase() : 'DEMO'}</span></div><p>{liveSchema ? 'Live schema, records, and read-only SQL queries are available. Data-changing SQL remains disabled.' : 'Explore a connected e-commerce schema, browse realistic sample rows, and try the SQL workspace. No database setup or credentials needed.'}</p><div className="overview-details"><span><strong>{liveSchema?.tables.length ?? initialNodes.length}</strong> {liveSchema ? 'visible tables' : 'sample tables'}</span><span><strong>{liveSchema ? edges.length : initialEdges.length}</strong> relationships</span></div><div className="overview-actions"><button className="button button-primary" onClick={() => setSection('schema')}><GitBranch size={15}/> {liveSchema ? 'Open schema designer' : 'Explore sample schema'}</button><button className="button button-quiet" onClick={() => { setActiveTable('orders'); setSearchText(''); setSection('data'); }}><Table2 size={15}/> Browse sample records</button><button className="button button-quiet" onClick={() => { setSql(initialSql); setSqlResult(null); setSqlError(''); setSection('sql'); }}><TerminalSquare size={15}/> Try sample SQL</button></div></section><section className="overview-connect"><span className="overview-section-label">YOUR DATABASE</span><h2>{liveSchema ? 'Inspect another schema' : 'Connect your own database'}</h2><p>{liveSchema ? 'The API keeps credentials in an expiring in-memory session; no profile is saved.' : 'When you’re ready, connect PostgreSQL to explore your own schema. The sample workspace is always available.'}</p><button className="text-button" onClick={() => setShowConnection(true)}>{liveSchema ? 'Inspect database' : 'Set up a connection'} <ArrowRight size={14}/></button></section></div>
     </>;
   };
 
@@ -978,7 +1439,7 @@ function App() {
               return (
                 <button key={item.key} className={`nav-item ${section === item.key ? 'active' : ''}`} onClick={() => setSection(item.key)} title={!sidebarOpen ? item.label : undefined}>
                   <Icon size={18} />
-                  {sidebarOpen && <span className="nav-label-wrap"><span>{item.label}</span>{item.key === 'learning' && <span className="nav-new">NEW</span>}</span>}
+                  {sidebarOpen && <span className="nav-label-wrap"><span>{item.label}</span>{item.key === 'learning' && <span className="nav-new">NEW</span>}{item.key === 'copilot' && <span className="nav-new" style={{ background: '#eaf1ff', color: '#2864c5' }}>AI</span>}</span>}
                 </button>
               );
             })}
@@ -986,19 +1447,43 @@ function App() {
         ))}
       </div>
       {sidebarOpen && <div className="sidebar-connections"><div className="connection-heading"><span>CONNECTIONS</span><button onClick={() => setShowConnection(true)} title="Add connection" aria-label="Add connection"><Plus size={14}/></button></div><button className="connection-item" onClick={() => setShowConnection(true)}><span className="connection-db-icon"><Database size={14}/></span><span className="connection-info"><strong>{liveSchema?.database ?? 'commerce_demo'}</strong><small><i/> {liveSchema ? `Connected · ${liveSchema.engine === 'postgres' ? 'PostgreSQL' : 'MySQL'}` : 'Demo database'}</small></span><span className="demo-badge">{liveSchema ? 'PG' : 'DEMO'}</span></button><button className="add-connection" onClick={() => setShowConnection(true)}><Plus size={14}/> Add connection</button></div>}
+      {sidebarOpen && (
+        <div style={{ marginTop: '16px' }}>
+          <DatabaseExplorer
+            engine={liveSchema ? liveSchema.engine : 'demo'}
+            databaseName={liveSchema?.database ?? 'commerce_demo'}
+            tables={explorerTables}
+            activeTable={activeTable}
+            onSelectTable={(tblSchema, tblName, view) => {
+              if (liveSchema) {
+                if (view === 'data') {
+                  void loadLiveRecords(tblSchema, tblName, 0);
+                } else {
+                  setActiveTable(schemaTableId(tblSchema, tblName));
+                  setSection('schema');
+                }
+              } else {
+                setActiveTable(tblName);
+                setSection(view);
+              }
+            }}
+          />
+        </div>
+      )}
       <div className="sidebar-bottom"><button className="nav-item" onClick={() => notify('Settings will be available as the app grows.')}><Settings2 size={17}/>{sidebarOpen && <span>Settings</span>}</button><button className="nav-item" onClick={() => notify('Help documentation is being prepared.')}><CircleHelp size={17}/>{sidebarOpen && <span>Help & feedback</span>}</button>{sidebarOpen && <div className="user-card"><div className="user-avatar">M</div><div className="user-copy"><strong>My workspace</strong><span>Free plan · Local demo</span></div><MoreHorizontal size={16}/></div>}</div>
     </aside>
-    <main id="main-content" className="main-area" tabIndex={-1}><header className="topbar"><div className="topbar-left"><button className="mobile-menu" aria-label={sidebarOpen ? 'Hide navigation' : 'Show navigation'} aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(!sidebarOpen)}><Menu size={18}/></button><div className="breadcrumb"><span>Workspace</span><ChevronRight size={13}/><strong>{title}</strong></div></div><div className="topbar-right"><div className="connection-status"><span className="status-dot"/><span>{liveSchema ? `${liveSchema.engine} · ${liveSchema.database}` : 'Demo environment'}</span><ChevronDown size={12}/></div><button className="top-icon" onClick={() => notify('Keyboard shortcuts are coming soon.')} title="Shortcuts" aria-label="Shortcuts"><Command size={16}/></button><button className="top-icon" onClick={() => notify('Help center coming soon.')} title="Help" aria-label="Help"><HelpCircle size={16}/></button><div className="top-avatar">M</div></div></header><div className={`page-content ${section === 'schema' ? 'schema-page' : ''}`}>{renderContent()}<footer className="app-footer"><span><span className="footer-brand-dot"/> DBFLOW <span className="footer-version">v0.1.0</span></span><span>Built for clarity <span className="footer-heart">✳</span></span></footer></div></main>
+    <main id="main-content" className="main-area" tabIndex={-1}><header className="topbar"><div className="topbar-left"><button className="mobile-menu" aria-label={sidebarOpen ? 'Hide navigation' : 'Show navigation'} aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(!sidebarOpen)}><Menu size={18}/></button><div className="breadcrumb"><span>Workspace</span><ChevronRight size={13}/><strong>{title}</strong></div></div><div className="topbar-right"><div className="connection-status"><span className="status-dot"/><span>{liveSchema ? `${liveSchema.engine} · ${liveSchema.database}` : 'Demo environment'}</span><ChevronDown size={12}/></div><button className="top-icon" onClick={() => notify('Keyboard shortcuts are coming soon.')} title="Shortcuts" aria-label="Shortcuts"><Command size={16}/></button><button className="top-icon" onClick={() => notify('Help center coming soon.')} title="Help" aria-label="Help"><HelpCircle size={16}/></button><div className="top-avatar">M</div></div></header><div className={`page-content ${section === 'schema' ? 'schema-page' : section === 'data' ? 'data-explorer-page' : ''}`}>{renderContent()}{section !== 'data' && <footer className="app-footer"><span><span className="footer-brand-dot"/> DBFLOW <span className="footer-version">v0.1.0</span></span><span>Built for clarity <span className="footer-heart">✳</span></span></footer>}</div></main>
     {showConnection && <div className="modal-backdrop" onClick={closeConnectionDialog}><div className="connection-modal" role="dialog" aria-modal="true" aria-labelledby="connect-dialog-title" aria-describedby="connect-dialog-description" onClick={(e) => e.stopPropagation()}><div className="modal-heading"><div className="modal-icon"><Database size={19}/></div><button className="icon-button" aria-label="Close connection dialog" onClick={closeConnectionDialog}><X size={17}/></button></div><h2 id="connect-dialog-title">Connect a database</h2><p id="connect-dialog-description">Credentials are sent to the local API to open an expiring in-memory session; the form fields clear when this dialog closes.</p><div className="engine-toggle"><button type="button" className={connectionEngine === 'postgres' ? 'selected' : ''} aria-pressed={connectionEngine === 'postgres'} onClick={() => selectConnectionEngine('postgres')}>PostgreSQL</button><button type="button" className={connectionEngine === 'mysql' ? 'selected' : ''} aria-pressed={connectionEngine === 'mysql'} onClick={() => selectConnectionEngine('mysql')}>MySQL</button></div><form className="connection-form" onSubmit={submitConnectionTest}><label>Host<input required value={connectionForm.host} onChange={(e) => updateConnectionField('host', e.target.value)} placeholder="localhost"/></label><div className="form-two-col"><label>Port<input required type="number" min="1" max="65535" value={connectionForm.port} onChange={(e) => updateConnectionField('port', e.target.value)}/></label><label>Database<input required value={connectionForm.database} onChange={(e) => updateConnectionField('database', e.target.value)} placeholder="database_name"/></label></div><label>Username<input required value={connectionForm.username} onChange={(e) => updateConnectionField('username', e.target.value)} placeholder="database user"/></label><label>Password<input type="password" value={connectionForm.password} onChange={(e) => updateConnectionField('password', e.target.value)} placeholder="Password (if required)" autoComplete="new-password"/></label><label className="ssl-checkbox"><input type="checkbox" checked={connectionForm.ssl} onChange={(e) => updateConnectionField('ssl', e.target.checked)}/> Require SSL with certificate validation</label>{connectionResult && <div className={`connection-result ${connectionResult.startsWith('Connected') ? 'success' : connectionResult.startsWith('Reading') ? 'pending' : 'error'}`} role={connectionResult.startsWith('Connected') || connectionResult.startsWith('Reading') ? 'status' : 'alert'} aria-live="polite">{connectionResult.startsWith('Connected') ? <Check size={14}/> : connectionResult.startsWith('Reading') ? <Clock3 size={14}/> : <CircleHelp size={14}/>}<span>{connectionResult}</span></div>}<div className="modal-note"><ShieldCheck size={15}/><span>Local development only. Browsing is read-only; record changes require separate review and confirmation. Credentials remain in the API memory pool for up to 15 idle minutes; Disconnect closes the session. The form clears when this dialog closes.</span></div><button className="button button-primary full-button" type="submit" disabled={connectionBusy}>{connectionBusy ? (connectionResult.startsWith('Reading') ? 'Inspecting schema…' : 'Testing connection…') : 'Test connection'} <ArrowRight size={14}/></button>{connectionVerified && (pendingConnectionId || liveConnectionId) && <button className="button button-quiet full-button" type="button" onClick={inspectSchema} disabled={connectionBusy}>{connectionBusy ? 'Inspecting schema…' : pendingConnectionId ? `Inspect ${connectionEngine === 'postgres' ? 'PostgreSQL' : 'MySQL'} schema` : `Refresh ${connectionEngine === 'postgres' ? 'PostgreSQL' : 'MySQL'} schema`} <Database size={14}/></button>}</form></div></div>}
     {showEditRecord && liveConnectionId && liveRecords && selectedLiveRow && liveRecordTable && <EditRecordDialog connectionId={liveConnectionId} schema={liveRecords.schema} table={liveRecords.table} row={selectedLiveRow} columns={liveRecordTable.columns} onClose={() => setShowEditRecord(false)} onRefresh={() => loadLiveRecords(liveRecords.schema, liveRecords.table, liveRecords.page, liveRecords.pageSize, liveSort, searchText)} onSaved={async () => { const refreshed = await loadLiveRecords(liveRecords.schema, liveRecords.table, liveRecords.page, liveRecords.pageSize); notify(refreshed ? 'Row saved to the database' : 'Row saved, but the table did not refresh. Use Retry to verify it.'); }} />}
     {showInsertRecord && liveConnectionId && liveRecords && liveRecordTable && <InsertRecordDialog connectionId={liveConnectionId} schema={liveRecords.schema} table={liveRecords.table} columns={liveRecordTable.columns} onClose={() => setShowInsertRecord(false)} onInserted={refreshAfterInsert} />}
     {showDeleteRecord && liveConnectionId && liveRecords && selectedLiveRow && liveRecordTable && <DeleteRecordDialog connectionId={liveConnectionId} schema={liveRecords.schema} table={liveRecords.table} row={selectedLiveRow} columns={liveRecordTable.columns} onClose={() => setShowDeleteRecord(false)} onDeleted={refreshAfterDelete} />}
-    {showCreateTable && liveConnectionId && liveSchema && <CreateTableDialog connectionId={liveConnectionId} engine={liveSchema.engine} references={liveSchema.tables} initialSchema={liveSchema.engine === 'mysql' ? liveSchema.database : selectedLiveTable?.schema ?? liveSchema.tables[0]?.schema ?? 'public'} onClose={() => setShowCreateTable(false)} onPlanned={stageSchemaPlanEntry}/>}
+    {showCreateTable && liveConnectionId && liveSchema && <CreateTableDialog connectionId={liveConnectionId} engine={liveSchema.engine} references={liveSchema.tables} initialSchema={liveSchema.engine === 'mysql' ? liveSchema.database : selectedLiveTable?.schema ?? liveSchema.tables[0]?.schema ?? 'public'} onClose={() => setShowCreateTable(false)} onCreated={refreshSchemaAfterCreate} onPlanned={stageSchemaPlanEntry}/>}
     {showAddColumnReview && liveConnectionId && <ReviewAddColumnDialog connectionId={liveConnectionId} sql={addColumnSql} onClose={() => setShowAddColumnReview(false)} onPlanned={stageSchemaPlanEntry}/>}
     {showNullabilityReview && liveConnectionId && <ReviewNullabilityDialog connectionId={liveConnectionId} sql={nullabilitySql} onClose={() => setShowNullabilityReview(false)} onPlanned={stageSchemaPlanEntry}/>}
     {relationshipTables && liveSchema && liveConnectionId && (() => { const referenced = liveSchema.tables.find((table) => schemaTableId(table.schema, table.name) === relationshipTables.referenced); const referencing = liveSchema.tables.find((table) => schemaTableId(table.schema, table.name) === relationshipTables.referencing); return referenced && referencing ? <CreateRelationshipDialog connectionId={liveConnectionId} referencedTable={referenced} referencingTable={referencing} onClose={() => setRelationshipTables(null)} onPlanned={stageSchemaPlanEntry}/> : null; })()}
     {showSchemaChangePlan && liveConnectionId && <SchemaChangePlan connectionId={liveConnectionId} changes={schemaChangePlan} onRemove={(id) => setSchemaChangePlan((current) => current.filter((change) => change.id !== id))} onClose={() => setShowSchemaChangePlan(false)} onApplied={applyCompletedSchemaPlan}/>}
     {showSchemaGroups && <SchemaGroupsDialog groups={schemaGroups} onClose={() => setShowSchemaGroups(false)} onCreate={createSchemaGroup} onRename={(id, name) => updateSchemaGroup(id, { name })} onColor={(id, color) => updateSchemaGroup(id, { color })} onToggle={toggleSchemaGroup} onDelete={deleteSchemaGroup}/>}
+    {schemaNoteTarget && (() => { const table = tableForMenu(schemaNoteTarget.tableId); const columnName = schemaNoteTarget.columnName; const noteKey = columnName ? schemaColumnNoteKey(schemaNoteTarget.tableId, columnName) : ''; return <SchemaNoteDialog kind={columnName ? 'column' : 'table'} name={`${table.schema}.${table.name}${columnName ? `.${columnName}` : ''}`} initialNote={columnName ? schemaNotes.columns[noteKey] ?? '' : schemaNotes.tables[schemaNoteTarget.tableId] ?? ''} onClose={() => setSchemaNoteTarget(null)} onSave={saveSchemaNote}/>; })()}
     {deleteTableId && liveSchema && liveConnectionId && (() => { const table = liveSchema.tables.find((item) => schemaTableId(item.schema, item.name) === deleteTableId); return table ? <DeleteTableDialog connectionId={liveConnectionId} table={table} onClose={() => setDeleteTableId(null)} onDeleted={refreshSchemaAfterTableDrop} onReconnect={() => { setDeleteTableId(null); setShowConnection(true); }}/> : null; })()}
     {toast && <div className="toast" role="status" aria-live="polite"><Check size={15}/>{toast}</div>}
   </div>;

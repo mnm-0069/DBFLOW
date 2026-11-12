@@ -1,0 +1,189 @@
+@startuml
+skinparam classAttributeIconSize 0
+skinparam roundcorner 6
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 11
+skinparam backgroundColor #FFFFFF
+
+package "Connection Models" {
+  class ConnectionInput {
+    +engine: "postgres" | "mysql"
+    +host: string
+    +port: number
+    +database: string
+    +username: string
+    +password: string
+    +ssl: boolean
+  }
+
+  interface DatabaseSession {
+    +engine: "postgres" | "mysql"
+    +database: string
+    +lastUsedAt: number
+    +connectionId: string
+  }
+
+  class PostgresSession implements DatabaseSession {
+    +pool: pg.Pool
+    +database: string
+    +lastUsedAt: number
+    +connectionId: string
+  }
+
+  class MysqlSession implements DatabaseSession {
+    +pool: mysql.Pool
+    +database: string
+    +lastUsedAt: number
+    +connectionId: string
+  }
+}
+
+package "Schema & DDL Models" {
+  class PostgresSchemaTable {
+    +schema: string
+    +name: string
+    +columns: SchemaColumn[]
+    +keyGroups: KeyGroup[]
+    +foreignKeys: ForeignKeyMapping[]
+  }
+
+  class SchemaColumn {
+    +name: string
+    +type: string
+    +key: "pk" | "fk" | "pk-fk"
+    +unique: boolean
+    +nullable: boolean
+    +hasDefault: boolean
+    +generated: boolean
+    +identity: boolean
+  }
+
+  class CreateTableDraft {
+    +schema: string
+    +table: string
+    +columns: CreateTableColumnDraft[]
+    +uniqueConstraints: string[][]
+    +foreignKeyConstraints: CreateTableForeignKey[]
+  }
+
+  class CreateTablePlan {
+    +planId: string
+    +sql: string
+    +expiresInSeconds: number
+  }
+
+  PostgresSchemaTable "1" *-- "1..*" SchemaColumn
+}
+
+package "Health & Copilot Models" {
+  class DatabaseHealthReport {
+    +engine: string
+    +database: string
+    +analyzedAt: string
+    +tableCount: number
+    +foreignKeyCount: number
+    +indexCount: number
+    +healthScore: HealthScoreBreakdown
+    +findings: HealthFinding[]
+  }
+
+  class HealthFinding {
+    +id: string
+    +title: string
+    +severity: CopilotSeverity
+    +category: CopilotCategory
+    +table: string
+    +problem: string
+    +recommendedSolution: string
+    +suggestedSql: string
+  }
+
+  class HealthScoreBreakdown {
+    +baseScore: number
+    +totalDeductions: number
+    +finalScore: number
+    +grade: "A" | "B" | "C" | "D" | "F"
+  }
+
+  class CopilotChatMessage {
+    +id: string
+    +conversationId: string
+    +role: "user" | "assistant" | "system"
+    +content: string
+    +timestamp: string
+    +toolCalls: AgentToolCall[]
+    +suggestedActions: CopilotAction[]
+    +telemetry: CopilotTelemetry
+  }
+
+  class AgentToolCall {
+    +id: string
+    +name: string
+    +args: Record<string, unknown>
+    +result: unknown
+    +status: "running" | "completed" | "failed"
+  }
+
+  DatabaseHealthReport "1" *-- "0..*" HealthFinding
+  DatabaseHealthReport "1" *-- "1" HealthScoreBreakdown
+  CopilotChatMessage "1" o-- "0..*" AgentToolCall
+}
+
+package "Core Domain Services" {
+  class ConnectionService {
+    -postgresSessions: Map<string, PostgresSession>
+    -mysqlSessions: Map<string, MysqlSession>
+    +testDatabaseConnection(input: ConnectionInput): Promise<ConnectionTestResponse>
+    +openDatabaseSession(input: ConnectionInput): Promise<{connectionId: string}>
+    +getDatabaseSession(connectionId: string): DatabaseSession
+    +closeDatabaseSession(connectionId: string): Promise<void>
+    +introspectDatabaseSchema(session: DatabaseSession): Promise<SchemaResponse>
+    +executeDatabaseQuery(session: DatabaseSession, query: string): Promise<QueryResult>
+    +readDatabaseTablePage(session: DatabaseSession, ...): Promise<RecordPage>
+    +validateReadOnlyQuery(query: string, engine: string): void
+  }
+
+  class SchemaService {
+    -schemaPlans: Map<string, CreateTablePlan>
+    +validateCreateTableDraft(draft: CreateTableDraft, engine: string): CreateTableDraft
+    +previewCreateTable(session: DatabaseSession, connId: string, draft: CreateTableDraft): Promise<CreateTablePlan>
+    +executeCreateTable(session: DatabaseSession, connId: string, planId: string): Promise<TableResult>
+    +previewAddColumn(session: DatabaseSession, connId: string, sql: string): Promise<CreateTablePlan>
+    +executeAddColumn(session: DatabaseSession, connId: string, planId: string): Promise<ColumnResult>
+    +previewDropTable(session: DatabaseSession, ...): Promise<DropPlan>
+    +executeDropTable(session: DatabaseSession, connId: string, planId: string): Promise<DropResult>
+  }
+
+  class AgentEngine {
+    +runCopilotAgent(session: DatabaseSession, userMessage: string, ...): Promise<CopilotChatMessage>
+    +classifyUserIntent(userMessage: string, knownTables: string[], history: any[]): string
+    +generateLocalResponse(userMessage: string, intent: string, ...): string
+  }
+}
+
+package "Error Specialization Hierarchy" {
+  class Error <<standard>>
+
+  class PostgresSessionLimitError extends Error
+  class PostgresTableNotFoundError extends Error
+  class PostgresResultSizeError extends Error
+  class RecordSortColumnError extends Error
+  class ReadOnlyQueryValidationError extends Error
+  class DatabaseQueryResultSizeError extends Error
+  class DatabaseHostValidationError extends Error
+  class SchemaOperationError extends Error {
+    +status: number
+  }
+  class RecordUpdateError extends Error {
+    +status: number
+  }
+  class RecordMutationError extends Error {
+    +status: number
+  }
+}
+
+ConnectionService --> DatabaseSession : manages
+SchemaService --> CreateTablePlan : stages
+AgentEngine --> CopilotChatMessage : produces
+@enduml

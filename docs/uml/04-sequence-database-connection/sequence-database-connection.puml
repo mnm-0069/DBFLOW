@@ -1,0 +1,74 @@
+@startuml
+autonumber
+skinparam roundcorner 6
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 11
+skinparam backgroundColor #FFFFFF
+
+actor "Developer" as User
+participant "Web App (App.tsx)" as App
+participant "ConnectionsRouter
+(/api/connections)" as Route
+participant "DatabaseHostValidator" as HostVal
+participant "ConnectionService" as ConnSvc
+participant "IntelligenceOrchestrator" as IntelOrch
+database "Target Database
+(PostgreSQL / MySQL)" as TargetDB
+participant "React Flow Canvas" as Canvas
+
+== Phase 1: Credential Verification ==
+User -> App : Inputs credentials & clicks "Test connection"
+App -> Route : POST /api/connections/test
+{engine, host, port, db, user, pass, ssl}
+Route -> HostVal : resolveDatabaseHost(host)
+alt Invalid Host / SSRF Forbidden
+  HostVal --> Route : throw DatabaseHostValidationError()
+  Route --> App : HTTP 400 {error: "Target forbidden"}
+  App --> User : Shows error dialog
+else Valid Destination Host
+  HostVal --> Route : returns resolved IP
+  Route -> ConnSvc : testDatabaseConnection(input)
+  ConnSvc -> TargetDB : Opens temporary TCP connection
+  ConnSvc -> TargetDB : SELECT version();
+  TargetDB --> ConnSvc : Returns version string
+  ConnSvc -> TargetDB : Closes connection
+  ConnSvc --> Route : {success: true, engine, latencyMs, serverVersion}
+  Route --> App : HTTP 200 {latencyMs: 24, serverVersion: "PostgreSQL 16..."}
+  App --> User : Displays green latency indicator
+end
+
+== Phase 2: Session Establishment ==
+User -> App : Clicks "Inspect PostgreSQL schema"
+App -> Route : POST /api/connections/open
+{credentials}
+Route -> ConnSvc : openDatabaseSession(input)
+alt Session Pool Exceeded (> 5 concurrent)
+  ConnSvc --> Route : throw PostgresSessionLimitError()
+  Route --> App : HTTP 429 {error: "Session limit reached"}
+else Session Available
+  ConnSvc -> TargetDB : Initializes pg.Pool / mysql2.Pool
+  ConnSvc -> ConnSvc : Generates 64-hex connectionId
+  ConnSvc -> ConnSvc : Stores in in-memory session map (15m TTL)
+  ConnSvc --> Route : {connectionId, database, engine}
+  Route -> IntelOrch : scheduleAnalysis(connectionId, session, 'connection_opened')
+  note right of IntelOrch : Background thread computes
+health & index statistics
+  Route --> App : HTTP 200 {connectionId: "a3f8..."}
+end
+
+== Phase 3: Schema Introspection ==
+App -> Route : POST /api/connections/introspect
+{connectionId}
+Route -> ConnSvc : getDatabaseSession(connectionId)
+Route -> ConnSvc : introspectDatabaseSchema(session)
+ConnSvc -> TargetDB : SELECT * FROM information_schema.columns
+TargetDB --> ConnSvc : Column rows, types, nullability
+ConnSvc -> TargetDB : SELECT * FROM pg_catalog.pg_constraint (PK, FK, Unique)
+TargetDB --> ConnSvc : Constraint mappings
+ConnSvc -> ConnSvc : assemblePostgresSchema(...)
+ConnSvc --> Route : {database, engine, tables: [...]}
+Route --> App : HTTP 200 {tables: [...]}
+App -> Canvas : Maps tables to TableNodes & FloatingEdges
+Canvas --> User : Renders ER schema canvas
+@enduml

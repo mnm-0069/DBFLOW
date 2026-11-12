@@ -14,3 +14,6 @@ export type ConnectionTestResponse = {
   latencyMs: number;
   serverVersion: string;
 };
+
+export * from './copilot.types.js';
+

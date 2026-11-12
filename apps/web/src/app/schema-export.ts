@@ -38,7 +38,7 @@ export function buildSchemaSvg(database: string, engine: string, nodes: Node[], 
   const minY = Math.min(...items.map((node) => node.y));
   const maxX = Math.max(...items.map((node) => node.x + node.width));
   const maxY = Math.max(...items.map((node) => node.y + node.height));
-  const width = Math.ceil(Math.max(maxX - minX + margin * 2, margin * 2 + 390 + uniqueGroups.length * 128));
+  const width = Math.ceil(Math.max(maxX - minX + margin * 2, margin * 2 + 660 + uniqueGroups.length * 128));
   const height = Math.ceil(maxY - minY + margin * 2 + titleHeight + legendHeight);
   const offsetX = margin - minX;
   const offsetY = margin + titleHeight - minY;
@@ -57,16 +57,21 @@ export function buildSchemaSvg(database: string, engine: string, nodes: Node[], 
     const d = `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`;
     const distance = Math.hypot(x2 - x1, y2 - y1);
     const label = typeof edge.label === 'string' ? edge.label : '';
-    const labelMarkup = distance < 155 || !label ? '' : (() => {
+    const edgeData = edge.data as { cardinalityLabel?: string; relationshipKind?: string } | undefined;
+    const cardinalityLabel = edgeData?.cardinalityLabel ?? '';
+    const displayLabel = [cardinalityLabel, label].filter(Boolean).join(' · ');
+    const manyToMany = edgeData?.relationshipKind === 'junction';
+    const stroke = manyToMany ? '#8165bd' : '#3569c8';
+    const labelMarkup = distance < 155 || !displayLabel ? '' : (() => {
       const maxWidth = Math.max(112, Math.min(340, distance * 0.82));
-      const lines = wrapLabel(label, Math.max(14, Math.floor((maxWidth - 18) / 6.2)));
+      const lines = wrapLabel(displayLabel, Math.max(14, Math.floor((maxWidth - 18) / 6.2)));
       const boxWidth = Math.min(maxWidth, Math.max(112, Math.max(...lines.map((line) => line.length)) * 6.2 + 18));
       const boxHeight = lines.length * 14 + 10;
       const labelX = (x1 + x2) / 2;
       const labelY = (y1 + y2) / 2;
-      return `<g transform="translate(${labelX - boxWidth / 2} ${labelY - boxHeight / 2})"><rect width="${boxWidth}" height="${boxHeight}" rx="6" fill="#fff" stroke="#dce4ef"/><text x="${boxWidth / 2}" y="${13}" text-anchor="middle" fill="#344054" font-family="'DM Mono',monospace" font-size="10">${lines.map((line, index) => `<tspan x="${boxWidth / 2}" dy="${index === 0 ? 0 : 13}">${esc(line)}</tspan>`).join('')}</text></g>`;
+      return `<g transform="translate(${labelX - boxWidth / 2} ${labelY - boxHeight / 2})"><rect width="${boxWidth}" height="${boxHeight}" rx="6" fill="#fff" stroke="${stroke}"/><text x="${boxWidth / 2}" y="${13}" text-anchor="middle" fill="#344054" font-family="'DM Mono',monospace" font-size="10">${lines.map((line, index) => `<tspan x="${boxWidth / 2}" dy="${index === 0 ? 0 : 13}">${esc(line)}</tspan>`).join('')}</text></g>`;
     })();
-    return `<g><path d="${d}" fill="none" stroke="#3569c8" stroke-width="2" marker-end="url(#arrow)"/>${labelMarkup}</g>`;
+    return `<g><path d="${d}" fill="none" stroke="${stroke}" stroke-width="2"${manyToMany ? ' stroke-dasharray="5 4" marker-end="url(#arrowPurple)"' : ' marker-end="url(#arrow)"'}/>${labelMarkup}</g>`;
   }).join('');
 
   const tableMarkup = items.map((node) => {
@@ -87,12 +92,12 @@ export function buildSchemaSvg(database: string, engine: string, nodes: Node[], 
     return `<g><rect x="${x}" y="${y}" width="${nodeWidth}" height="${node.height}" rx="10" fill="#fff" stroke="#d7e0eb"/><path d="M ${x + 10} ${y} H ${x + nodeWidth - 10} Q ${x + nodeWidth} ${y} ${x + nodeWidth} ${y + 10} V ${y + 68} H ${x} V ${y + 10} Q ${x} ${y} ${x + 10} ${y}" fill="${esc(groupColor)}" fill-opacity="0.11"/><rect x="${x}" y="${y + 67}" width="${nodeWidth}" height="1" fill="#e5eaf1"/><text x="${x + 16}" y="${y + 29}" fill="#202938" font-family="'DM Mono',monospace" font-size="15" font-weight="700">${esc(title)}</text><text x="${x + 16}" y="${y + 51}" fill="#667085" font-family="'DM Sans',sans-serif" font-size="11">${esc(subtitle)}</text>${node.group ? `<rect x="${x + nodeWidth - 93}" y="${y + 12}" width="77" height="20" rx="10" fill="${esc(groupColor)}" fill-opacity="0.13"/><circle cx="${x + nodeWidth - 81}" cy="${y + 22}" r="3" fill="${esc(groupColor)}"/><text x="${x + nodeWidth - 73}" y="${y + 26}" fill="#475467" font-family="'DM Sans',sans-serif" font-size="9">${esc(node.group.name.slice(0, 13))}</text>` : ''}${rows}<line x1="${x}" y1="${footY}" x2="${x + nodeWidth}" y2="${footY}" stroke="#e5eaf1"/><circle cx="${x + 16}" cy="${footY + 15}" r="3" fill="#70cfa9"/><text x="${x + 26}" y="${footY + 19}" fill="#667085" font-family="'DM Sans',sans-serif" font-size="10">Synced</text><text x="${x + nodeWidth - 14}" y="${footY + 19}" text-anchor="end" fill="#667085" font-family="'DM Sans',sans-serif" font-size="10">${columns.length} columns</text></g>`;
   }).join('');
 
-  const legendItems = [`<circle cx="${margin}" cy="${height - 20}" r="4" fill="#2463c5"/><text x="${margin + 10}" y="${height - 16}" fill="#667085" font-family="'DM Sans',sans-serif" font-size="11">Primary key</text>`, `<circle cx="${margin + 105}" cy="${height - 20}" r="4" fill="#6486bb"/><text x="${margin + 115}" y="${height - 16}" fill="#667085" font-family="'DM Sans',sans-serif" font-size="11">Foreign key</text>`, `<path d="M ${margin + 218} ${height - 20} h 25" stroke="#3569c8" stroke-width="2" marker-end="url(#arrow)"/><text x="${margin + 251}" y="${height - 16}" fill="#667085" font-family="'DM Sans',sans-serif" font-size="11">Relationship</text>`];
+  const legendItems = [`<circle cx="${margin}" cy="${height - 20}" r="4" fill="#2463c5"/><text x="${margin + 10}" y="${height - 16}" fill="#667085" font-family="'DM Sans',sans-serif" font-size="11">Primary key</text>`, `<circle cx="${margin + 105}" cy="${height - 20}" r="4" fill="#6486bb"/><text x="${margin + 115}" y="${height - 16}" fill="#667085" font-family="'DM Sans',sans-serif" font-size="11">Foreign key</text>`, `<path d="M ${margin + 218} ${height - 20} h 25" stroke="#3569c8" stroke-width="2" marker-end="url(#arrow)"/><text x="${margin + 251}" y="${height - 16}" fill="#667085" font-family="'DM Sans',sans-serif" font-size="11">Relationship</text>`, `<text x="${margin + 355}" y="${height - 16}" fill="#285da9" font-family="'DM Sans',sans-serif" font-size="10" font-weight="700">1 : 1</text><text x="${margin + 382}" y="${height - 16}" fill="#667085" font-family="'DM Sans',sans-serif" font-size="10">One-to-one</text>`, `<text x="${margin + 465}" y="${height - 16}" fill="#285da9" font-family="'DM Sans',sans-serif" font-size="10" font-weight="700">1 : N</text><text x="${margin + 492}" y="${height - 16}" fill="#667085" font-family="'DM Sans',sans-serif" font-size="10">One-to-many</text>`, `<text x="${margin + 585}" y="${height - 16}" fill="#7153a3" font-family="'DM Sans',sans-serif" font-size="10" font-weight="700">M : N</text><text x="${margin + 622}" y="${height - 16}" fill="#667085" font-family="'DM Sans',sans-serif" font-size="10">Many-to-many</text>`];
   uniqueGroups.forEach((group, index) => {
-    const x = margin + 355 + index * 128;
+    const x = margin + 755 + index * 128;
     legendItems.push(`<circle cx="${x}" cy="${height - 20}" r="5" fill="${esc(group.color)}"/><text x="${x + 10}" y="${height - 16}" fill="#667085" font-family="'DM Sans',sans-serif" font-size="11">${esc(group.name.slice(0, 14))}</text>`);
   });
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#3569c8"/></marker></defs><rect width="100%" height="100%" fill="#f7f9fc"/><text x="${margin}" y="38" fill="#202938" font-family="'DM Sans',sans-serif" font-size="22" font-weight="700">${esc(database)} · Schema map</text><text x="${margin}" y="60" fill="#667085" font-family="'DM Sans',sans-serif" font-size="12">${esc(engine)} · ${items.length} tables · ${edges.length} relationships</text>${edgeMarkup}${tableMarkup}<line x1="${margin}" y1="${height - 47}" x2="${width - margin}" y2="${height - 47}" stroke="#e4e9f0"/>${legendItems.join('')}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#3569c8"/></marker><marker id="arrowPurple" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#8165bd"/></marker></defs><rect width="100%" height="100%" fill="#f7f9fc"/><text x="${margin}" y="38" fill="#202938" font-family="'DM Sans',sans-serif" font-size="22" font-weight="700">${esc(database)} · Schema map</text><text x="${margin}" y="60" fill="#667085" font-family="'DM Sans',sans-serif" font-size="12">${esc(engine)} · ${items.length} tables · ${edges.length} relationships</text>${edgeMarkup}${tableMarkup}<line x1="${margin}" y1="${height - 47}" x2="${width - margin}" y2="${height - 47}" stroke="#e4e9f0"/>${legendItems.join('')}</svg>`;
 }
 
 function download(blob: Blob, filename: string) {

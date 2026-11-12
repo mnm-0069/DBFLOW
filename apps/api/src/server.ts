@@ -1,8 +1,17 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import path from 'node:path';
+
+// Load environment variables from cwd and parent repo roots
+dotenv.config();
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+dotenv.config({ path: path.resolve(process.cwd(), '../.env') });
+dotenv.config({ path: path.resolve(process.cwd(), '../../.env') });
+
 import express from 'express';
 import cors from 'cors';
 import { healthRouter } from './routes/health.js';
 import { connectionsRouter } from './routes/connections.js';
+import { copilotRouter } from './routes/copilotRoutes.js';
 import { errorHandler } from './middleware/error-handler.js';
 
 const app = express();
@@ -12,6 +21,7 @@ app.use(cors({ origin: process.env.WEB_ORIGIN ?? ['http://localhost:5173', 'http
 app.use(express.json({ limit: '256kb' }));
 app.use('/api/health', healthRouter);
 app.use('/api/connections', connectionsRouter);
+app.use('/api/copilot', copilotRouter);
 app.use(errorHandler);
 
 // This API is a local development service and must not listen on LAN interfaces.

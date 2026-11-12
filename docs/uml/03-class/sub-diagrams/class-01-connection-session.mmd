@@ -1,0 +1,55 @@
+classDiagram
+    direction TB
+    class ConnectionInput {
+        +DatabaseEngine engine
+        +string host
+        +number port
+        +string database
+        +string username
+        +string password
+        +boolean ssl
+    }
+
+    class ConnectionTestRequest {
+        +DatabaseEngine engine
+        +string host
+        +number port
+        +string database
+        +string username
+        +string password
+        +boolean ssl
+    }
+
+    class ConnectionTestResponse {
+        +boolean success
+        +DatabaseEngine engine
+        +number latencyMs
+        +string serverVersion
+    }
+
+    class DatabaseSession {
+        <<interface>>
+        +DatabaseEngine engine
+        +string database
+        +number lastUsedAt
+        +string connectionId
+    }
+
+    class PostgresSession {
+        +Pool pool
+        +string database
+        +number lastUsedAt
+        +string connectionId
+    }
+
+    class MysqlSession {
+        +mysql.Pool pool
+        +string database
+        +number lastUsedAt
+        +string connectionId
+    }
+
+    DatabaseSession <|.. PostgresSession : implements
+    DatabaseSession <|.. MysqlSession : implements
+    ConnectionInput ..> DatabaseSession : establishes
+    ConnectionTestRequest ..> ConnectionTestResponse : produces

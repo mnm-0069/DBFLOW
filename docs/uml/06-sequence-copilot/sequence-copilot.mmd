@@ -1,0 +1,78 @@
+sequenceDiagram
+    autonumber
+    actor User as 👤 Developer
+    participant ChatUI as 💬 CopilotChat (React Component)
+    participant Route as ⚙️ CopilotRouter (/api/copilot/chat)
+    participant ConvStore as 💾 ConversationStore (copilot-conversations.json)
+    participant AgentEng as 🧠 AgentEngine (runCopilotAgent)
+    participant IntelStore as 📦 IntelligenceStore (intelligence-cache.json)
+    participant AiProv as 🌐 AiProvider Gateway
+    participant Gemini as ☁️ Google Gemini 3.8 Flash API
+    participant Tools as 🛠️ AgentTools (14 Specialized Tools)
+    participant TargetDB as 🗄️ PostgreSQL Database
+
+    User->>ChatUI: Submits question: "Why is query on enrollments slow?"
+    ChatUI->>ChatUI: Creates AbortController() instance
+    ChatUI->>Route: POST /api/copilot/chat {connectionId, conversationId, messages}
+
+    Route->>ConvStore: addMessageToConversation(conversationId, userMessage)
+    Route->>AgentEng: runCopilotAgent(session, userMessage, history, options)
+
+    %% Intent Classification
+    Note over AgentEng,IntelStore: Stage 1: Context & Intent Classification
+    AgentEng->>IntelStore: getIntelligence(connectionId)
+    IntelStore-->>AgentEng: Returns cached schema snapshot & health findings
+    AgentEng->>AgentEng: classifyUserIntent(userMessage, knownTables, history)
+
+    alt Branch A: Greeting / Acknowledgement (Fast Path)
+        AgentEng->>AgentEng: generateLocalResponse(userMessage, intent)
+        Note right of AgentEng: Instant local reply without API call<br/>Telemetry: source="deterministic_local"
+        AgentEng-->>Route: returns CopilotChatMessage (latency < 2ms)
+    else Branch B: General Conversational / Programming Question
+        Note right of AgentEng: Lightweight single-turn call<br/>Telemetry: source="conversational_fast_path"
+        AgentEng->>AiProv: getGeminiClient().models.generateContent(promptWithoutTools)
+        AiProv->>Gemini: POST /v1beta/models/gemini-3.8-flash:generateContent
+        Gemini-->>AiProv: Returns conversational markdown text
+        AiProv-->>AgentEng: Text response
+        AgentEng-->>Route: returns CopilotChatMessage
+    else Branch C: Autonomous Database Specialist Investigation (Loop)
+        Note over AgentEng,Gemini: Stage 2: Multi-Turn Function Calling Loop (Max 8 Iterations)
+        AgentEng->>AgentEng: Assembles system prompt with DB schema context & 14 Tool Definitions
+        AgentEng->>AiProv: Call Gemini with tools: [inspect_table_indexes, explain_sql_query, ...]
+        AiProv->>Gemini: POST /v1beta/models/gemini-3.8-flash:generateContent {contents, tools}
+        Gemini-->>AiProv: Model response: tool_calls: [inspect_table_indexes({tableName: "enrollments"})]
+        AiProv-->>AgentEng: Returns tool call directive
+
+        %% Turn 1 Tool Execution
+        AgentEng->>Tools: AGENT_TOOLS["inspect_table_indexes"].handler(session, {tableName: "enrollments"})
+        Tools->>TargetDB: SELECT * FROM pg_indexes WHERE tablename = 'enrollments';
+        TargetDB-->>Tools: Returns primary key index only (Missing index on foreign key student_id)
+        Tools-->>AgentEng: Tool result: {indexes: ["enrollments_pkey"], missingForeignKeys: ["student_id"]}
+        
+        %% Turn 2 Reflection & EXPLAIN
+        AgentEng->>AiProv: Submits tool result back to Gemini
+        AiProv->>Gemini: POST /v1beta/models/gemini-3.8-flash:generateContent {role: 'tool', content: ...}
+        Gemini-->>AiProv: Model response: tool_calls: [explain_sql_query({query: "SELECT * FROM enrollments..."})]
+        AiProv-->>AgentEng: Returns second tool call directive
+
+        AgentEng->>Tools: AGENT_TOOLS["explain_sql_query"].handler(session, args)
+        Tools->>TargetDB: EXPLAIN (ANALYZE, FORMAT JSON) SELECT * FROM enrollments WHERE student_id = 101;
+        TargetDB-->>Tools: Execution plan with Seq Scan on enrollments (cost=0.00..38.25)
+        Tools-->>AgentEng: Tool result: {scanType: "Seq Scan", cost: 38.25, recommendation: "CREATE INDEX..."}
+
+        %% Turn 3 Final Synthesis
+        AgentEng->>AiProv: Submits plan result back to Gemini
+        AiProv->>Gemini: POST /v1beta/models/gemini-3.8-flash:generateContent (synthesize diagnosis)
+        Gemini-->>AiProv: Returns final analysis text with root cause, risk rating & SQL fix
+        AiProv-->>AgentEng: Final synthesis text
+        
+        Note over AgentEng: Stage 3: Message Construction & Telemetry
+        AgentEng->>AgentEng: Constructs CopilotChatMessage with:
+        Note right of AgentEng: • Tool activities timeline<br/>• Suggested action: preview_plan ("CREATE INDEX...")<br/>• Stage timings & API request telemetry
+        AgentEng-->>Route: returns CopilotChatMessage
+    end
+
+    Route->>ConvStore: addMessageToConversation(conversationId, assistantResponse)
+    Route-->>ChatUI: HTTP 200 CopilotChatMessage JSON
+    ChatUI->>ChatUI: Renders markdown message & tool execution badges
+    ChatUI-->>User: Displays diagnostic explanation & "Review Migration Plan" button

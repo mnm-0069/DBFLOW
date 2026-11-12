@@ -1,0 +1,80 @@
+@startuml
+autonumber
+skinparam roundcorner 6
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 11
+skinparam backgroundColor #FFFFFF
+
+actor "Developer" as User
+participant "CopilotChat
+(React UI)" as ChatUI
+participant "CopilotRouter
+(/api/copilot/chat)" as Route
+participant "ConversationStore" as ConvStore
+participant "AgentEngine
+(runCopilotAgent)" as AgentEng
+participant "IntelligenceStore" as IntelStore
+participant "AiProvider Gateway" as AiProv
+cloud "Google Gemini
+3.8 Flash API" as Gemini
+participant "AgentTools
+(14 DB Tools)" as Tools
+database "PostgreSQL Server" as TargetDB
+
+User -> ChatUI : Sends: "Why is query on enrollments slow?"
+ChatUI -> Route : POST /api/copilot/chat
+{connectionId, conversationId, messages}
+Route -> ConvStore : addMessageToConversation(userMessage)
+Route -> AgentEng : runCopilotAgent(...)
+
+== Stage 1: Intent & Context Retrieval ==
+AgentEng -> IntelStore : getIntelligence(connectionId)
+IntelStore --> AgentEng : Returns cached schema & health data
+AgentEng -> AgentEng : classifyUserIntent(prompt)
+
+alt Intent: Greeting / Gratitude (Fast Path)
+  AgentEng -> AgentEng : generateLocalResponse()
+  AgentEng --> Route : Instant local response (<2ms)
+else Intent: General Conversation (Single Turn)
+  AgentEng -> AiProv : Generate content without tools
+  AiProv -> Gemini : POST :generateContent
+  Gemini --> AiProv : Conversational markdown text
+  AiProv --> AgentEng : Text response
+  AgentEng --> Route : CopilotChatMessage
+else Intent: Database Investigation (Autonomous Tool Loop)
+  == Stage 2: Iterative Autonomous Tool Execution ==
+  AgentEng -> AiProv : Request Gemini with 14 tool declarations
+  AiProv -> Gemini : POST :generateContent {contents, tools}
+  Gemini --> AiProv : tool_call: inspect_table_indexes({tableName: "enrollments"})
+  AiProv --> AgentEng : Dispatch tool call
+
+  AgentEng -> Tools : inspect_table_indexes(session, args)
+  Tools -> TargetDB : SELECT * FROM pg_indexes WHERE tablename='enrollments'
+  TargetDB --> Tools : Only enrollments_pkey found (Missing FK index on student_id)
+  Tools --> AgentEng : Result: {missingForeignKeys: ["student_id"]}
+
+  AgentEng -> AiProv : Send tool result back to Gemini
+  AiProv -> Gemini : POST :generateContent (with tool result)
+  Gemini --> AiProv : tool_call: explain_sql_query({query: "..."})
+  AiProv --> AgentEng : Dispatch second tool call
+
+  AgentEng -> Tools : explain_sql_query(session, args)
+  Tools -> TargetDB : EXPLAIN (ANALYZE, FORMAT JSON) SELECT ...
+  TargetDB --> Tools : Execution plan showing Sequential Scan
+  Tools --> AgentEng : Result: {scanType: "Seq Scan", cost: 38.25}
+
+  AgentEng -> AiProv : Send plan result back to Gemini
+  AiProv -> Gemini : Final synthesis request
+  Gemini --> AiProv : Markdown text with diagnosis & "CREATE INDEX idx_enrollments_student..."
+  AiProv --> AgentEng : Final synthesis text
+
+  == Stage 3: Packaging & Telemetry ==
+  AgentEng -> AgentEng : Constructs CopilotChatMessage with toolCalls & suggestedActions
+  AgentEng --> Route : CopilotChatMessage
+end
+
+Route -> ConvStore : addMessageToConversation(assistantResponse)
+Route --> ChatUI : HTTP 200 CopilotChatMessage
+ChatUI --> User : Displays diagnostic findings & "Review Index Plan" action button
+@enduml

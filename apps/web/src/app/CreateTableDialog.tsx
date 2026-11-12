@@ -22,9 +22,10 @@ const mysqlTypes: Array<[MysqlType, string]> = [['integer', 'Integer'], ['bigint
 const actions: Reference['onDelete'][] = ['no action', 'restrict', 'cascade', 'set null', 'set default'];
 const constraintLabels: Record<Constraint, string> = { primaryKey: 'Primary key', required: 'Required (NOT NULL)', unique: 'Unique', identity: 'Auto-generated number', default: 'Default value', check: 'Value rule (CHECK)', foreignKey: 'Foreign key' };
 
-export function CreateTableDialog({ connectionId, engine, initialSchema, references, onClose, onPlanned }: {
+export function CreateTableDialog({ connectionId, engine, initialSchema, references, onClose, onCreated, onPlanned }: {
   connectionId: string; engine: Engine; initialSchema: string; references: ReferenceTable[]; onClose: () => void;
-  onPlanned: (change: Omit<StagedSchemaChange, 'id' | 'expiresAt'> & { expiresInSeconds: number }) => void;
+  onCreated?: (schema: string, table: string) => Promise<void>;
+  onPlanned?: (change: Omit<StagedSchemaChange, 'id' | 'expiresAt'> & { expiresInSeconds: number }) => void;
 }) {
   const [draft, setDraft] = useState<Draft>({ schema: initialSchema, table: '', columns: [] });
   const [column, setColumn] = useState<ColumnDraft>(() => newColumn());
@@ -150,8 +151,16 @@ export function CreateTableDialog({ connectionId, engine, initialSchema, referen
   };
   const createTable = async () => {
     if (!preview || !reviewed) return;
-    onPlanned({ planId: preview.planId, sql: preview.sql, action: 'create-table', label: `Create ${draft.schema}.${draft.table}`, expiresInSeconds: preview.expiresInSeconds });
-    onClose();
+    setBusy(true); setError('');
+    try {
+      const response = await fetch(`${api}/schema/create-table`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ connectionId, planId: preview.planId }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? 'The database rejected this table definition.');
+      if (onCreated) await onCreated(payload.schema, payload.table);
+      if (onPlanned) onPlanned({ planId: preview.planId, sql: preview.sql, action: 'create-table', label: `Create ${draft.schema}.${draft.table}`, expiresInSeconds: preview.expiresInSeconds });
+      onClose();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not create this table.'); setPreview(null); setReviewed(false); }
+    finally { setBusy(false); }
   };
   const refValue = (reference: Reference | null) => reference ? JSON.stringify([reference.schema, reference.table, reference.column]) : '';
   const typeOptions = engine === 'postgres' ? pgTypes : mysqlTypes;
@@ -252,7 +261,7 @@ export function CreateTableDialog({ connectionId, engine, initialSchema, referen
       </div>
       <footer className="create-table-footer">
         <div className="create-table-footer-note"><ShieldCheck size={16} aria-hidden="true"/><span>{engine === 'postgres' ? 'PostgreSQL checks the draft. You review the SQL before it runs.' : 'Review the generated SQL before it runs on your database.'}</span></div>
-        <div className="create-table-actions"><button className="button button-quiet" type="button" onClick={onClose} disabled={busy}>Cancel</button>{preview ? <button className="button button-primary" type="button" disabled={!reviewed || busy} onClick={() => void createTable()}>Add to change plan <Check size={15} aria-hidden="true"/></button> : <button className="button button-primary" type="button" disabled={busy} onClick={() => void previewSql()}>{busy ? 'Generating preview…' : 'Review SQL'}</button>}</div>
+        <div className="create-table-actions">{preview ? <button className="button button-primary" type="button" disabled={!reviewed || busy} onClick={() => void createTable()}>{busy ? 'Creating…' : 'Create table'} <Check size={15} aria-hidden="true"/></button> : <button className="button button-primary" type="button" disabled={busy} onClick={() => void previewSql()}>{busy ? 'Generating preview…' : 'Review SQL'}</button>}<button className="button button-quiet" type="button" onClick={onClose} disabled={busy}>Cancel</button></div>
       </footer>
     </section>
   </div>;

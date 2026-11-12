@@ -1,0 +1,976 @@
+{
+  "timestamp": "2026-11-01T14:34:44.179Z",
+  "totalTests": 59,
+  "passed": 55,
+  "failed": 4,
+  "benchmarks": {
+    "Greeting": {
+      "roundtrip": {
+        "min": 3,
+        "max": 4,
+        "mean": 3,
+        "median": 3,
+        "p95": 4
+      },
+      "backend": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "p95": 0
+      }
+    },
+    "General Knowledge": {
+      "roundtrip": {
+        "min": 4,
+        "max": 4,
+        "mean": 4,
+        "median": 4,
+        "p95": 4
+      },
+      "backend": {
+        "min": 0,
+        "max": 1,
+        "mean": 0,
+        "median": 0,
+        "p95": 1
+      }
+    },
+    "Cached DB Question": {
+      "roundtrip": {
+        "min": 4,
+        "max": 5,
+        "mean": 4,
+        "median": 4,
+        "p95": 5
+      },
+      "backend": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "p95": 0
+      }
+    },
+    "Database Health": {
+      "roundtrip": {
+        "min": 3,
+        "max": 6,
+        "mean": 4,
+        "median": 4,
+        "p95": 6
+      },
+      "backend": {
+        "min": 0,
+        "max": 1,
+        "mean": 0,
+        "median": 0,
+        "p95": 1
+      }
+    },
+    "Complex Investigation": {
+      "roundtrip": {
+        "min": 4219,
+        "max": 7462,
+        "mean": 4921,
+        "median": 4310,
+        "p95": 7462
+      },
+      "backend": {
+        "min": 0,
+        "max": 7457,
+        "mean": 1491,
+        "median": 0,
+        "p95": 7457
+      }
+    },
+    "Multi-Tool Reasoning": {
+      "roundtrip": {
+        "min": 3674,
+        "max": 5079,
+        "mean": 3993,
+        "median": 3729,
+        "p95": 5079
+      },
+      "backend": {
+        "min": 3667,
+        "max": 5074,
+        "mean": 3987,
+        "median": 3723,
+        "p95": 5074
+      }
+    }
+  },
+  "records": [
+    {
+      "id": "3A-1",
+      "category": "3.A Basic Conversation",
+      "description": "Prompt: \"Hi\"",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 4ms | Source: deterministic_local | Tools: 0",
+      "durationMs": 4,
+      "telemetry": {
+        "source": "deterministic_local",
+        "provider": "local",
+        "apiRequestsCount": 0,
+        "toolCallsCount": 0,
+        "iterationsCount": 0,
+        "timings": {
+          "requestReceivedAt": "2026-11-01T14:32:49.142Z",
+          "intentClassifiedAt": "2026-11-01T14:32:49.142Z",
+          "completedAt": "2026-11-01T14:32:49.142Z",
+          "totalBackendDurationMs": 0
+        }
+      }
+    },
+    {
+      "id": "3A-2",
+      "category": "3.A Basic Conversation",
+      "description": "Prompt: \"What can you do?\"",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 3157ms | Source: gemini_direct | Tools: 0",
+      "durationMs": 3157,
+      "telemetry": {
+        "source": "gemini_direct",
+        "provider": "gemini",
+        "model": "gemini-3.5-flash-lite",
+        "apiRequestsCount": 1,
+        "toolCallsCount": 0,
+        "iterationsCount": 1,
+        "timings": {
+          "requestReceivedAt": "2026-11-01T14:32:49.145Z",
+          "geminiRequestStartedAt": "2026-11-01T14:32:49.146Z",
+          "geminiResponseReceivedAt": "2026-11-01T14:32:52.298Z",
+          "completedAt": "2026-11-01T14:32:52.298Z",
+          "totalBackendDurationMs": 3153
+        }
+      }
+    },
+    {
+      "id": "3A-3",
+      "category": "3.A Basic Conversation",
+      "description": "Prompt: \"Explain what a primary key is.\"",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 2215ms | Source: gemini_direct | Tools: 0",
+      "durationMs": 2215,
+      "telemetry": {
+        "source": "gemini_direct",
+        "provider": "gemini",
+        "model": "gemini-3.5-flash-lite",
+        "apiRequestsCount": 1,
+        "toolCallsCount": 0,
+        "iterationsCount": 1,
+        "timings": {
+          "requestReceivedAt": "2026-11-01T14:32:52.306Z",
+          "geminiRequestStartedAt": "2026-11-01T14:32:52.306Z",
+          "geminiResponseReceivedAt": "2026-11-01T14:32:54.514Z",
+          "completedAt": "2026-11-01T14:32:54.514Z",
+          "totalBackendDurationMs": 2208
+        }
+      }
+    },
+    {
+      "id": "3A-4",
+      "category": "3.A Basic Conversation",
+      "description": "Prompt: \"What's the difference between INNER JOIN and LEFT JOIN?\"",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 2292ms | Source: gemini_direct | Tools: 0",
+      "durationMs": 2292,
+      "telemetry": {
+        "source": "gemini_direct",
+        "provider": "gemini",
+        "model": "gemini-3.5-flash-lite",
+        "apiRequestsCount": 1,
+        "toolCallsCount": 0,
+        "iterationsCount": 1,
+        "timings": {
+          "requestReceivedAt": "2026-11-01T14:32:54.518Z",
+          "geminiRequestStartedAt": "2026-11-01T14:32:54.519Z",
+          "geminiResponseReceivedAt": "2026-11-01T14:32:56.806Z",
+          "completedAt": "2026-11-01T14:32:56.806Z",
+          "totalBackendDurationMs": 2288
+        }
+      }
+    },
+    {
+      "id": "3A-5",
+      "category": "3.A Basic Conversation",
+      "description": "Prompt: \"Explain database normalization in simple terms.\"",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 3646ms | Source: gemini_direct | Tools: 0",
+      "durationMs": 3646,
+      "telemetry": {
+        "source": "gemini_direct",
+        "provider": "gemini",
+        "model": "gemini-3.5-flash-lite",
+        "apiRequestsCount": 1,
+        "toolCallsCount": 0,
+        "iterationsCount": 1,
+        "timings": {
+          "requestReceivedAt": "2026-11-01T14:32:56.811Z",
+          "geminiRequestStartedAt": "2026-11-01T14:32:56.811Z",
+          "geminiResponseReceivedAt": "2026-11-01T14:33:00.452Z",
+          "completedAt": "2026-11-01T14:33:00.452Z",
+          "totalBackendDurationMs": 3641
+        }
+      }
+    },
+    {
+      "id": "3B-1",
+      "category": "3.B Database-Aware Questions",
+      "description": "Prompt: \"Give me an overview of my database.\"",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 3481ms | Source: gemini_direct | Tools: 0",
+      "durationMs": 3481,
+      "telemetry": {
+        "source": "gemini_direct",
+        "provider": "gemini",
+        "model": "gemini-3.5-flash-lite",
+        "apiRequestsCount": 1,
+        "toolCallsCount": 0,
+        "iterationsCount": 1,
+        "timings": {
+          "requestReceivedAt": "2026-11-01T14:33:00.459Z",
+          "geminiRequestStartedAt": "2026-11-01T14:33:00.459Z",
+          "geminiResponseReceivedAt": "2026-11-01T14:33:03.934Z",
+          "completedAt": "2026-11-01T14:33:03.934Z",
+          "totalBackendDurationMs": 3475
+        }
+      }
+    },
+    {
+      "id": "3B-2",
+      "category": "3.B Database-Aware Questions",
+      "description": "Prompt: \"How many tables do I have?\"",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 830ms | Source: gemini_direct | Tools: 0",
+      "durationMs": 830,
+      "telemetry": {
+        "source": "gemini_direct",
+        "provider": "gemini",
+        "model": "gemini-3.5-flash-lite",
+        "apiRequestsCount": 1,
+        "toolCallsCount": 0,
+        "iterationsCount": 1,
+        "timings": {
+          "requestReceivedAt": "2026-11-01T14:33:03.939Z",
+          "geminiRequestStartedAt": "2026-11-01T14:33:03.939Z",
+          "geminiResponseReceivedAt": "2026-11-01T14:33:04.765Z",
+          "completedAt": "2026-11-01T14:33:04.765Z",
+          "totalBackendDurationMs": 826
+        }
+      }
+    },
+    {
+      "id": "3B-3",
+      "category": "3.B Database-Aware Questions",
+      "description": "Prompt: \"Explain the relationships between my tables.\"",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 2ms | Source: cached_intelligence | Tools: 0",
+      "durationMs": 2,
+      "telemetry": {
+        "source": "cached_intelligence",
+        "provider": "intelligence_cache",
+        "apiRequestsCount": 0,
+        "toolCallsCount": 0,
+        "iterationsCount": 0,
+        "timings": {
+          "requestReceivedAt": "2026-11-01T14:33:04.767Z",
+          "intentClassifiedAt": "2026-11-01T14:33:04.767Z",
+          "cacheRetrievedAt": "2026-11-01T14:33:04.767Z",
+          "completedAt": "2026-11-01T14:33:04.767Z",
+          "totalBackendDurationMs": 0
+        }
+      }
+    },
+    {
+      "id": "3B-4",
+      "category": "3.B Database-Aware Questions",
+      "description": "Prompt: \"Which tables have the most columns?\"",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 3065ms | Source: gemini_with_tools | Tools: 1",
+      "durationMs": 3065,
+      "telemetry": {
+        "source": "gemini_with_tools",
+        "provider": "gemini",
+        "model": "gemini-3.5-flash-lite",
+        "apiRequestsCount": 2,
+        "toolCallsCount": 1,
+        "iterationsCount": 2,
+        "timings": {
+          "requestReceivedAt": "2026-11-01T14:33:04.768Z",
+          "geminiRequestStartedAt": "2026-11-01T14:33:04.768Z",
+          "geminiResponseReceivedAt": "2026-11-01T14:33:07.829Z",
+          "completedAt": "2026-11-01T14:33:07.829Z",
+          "totalBackendDurationMs": 3061
+        }
+      }
+    },
+    {
+      "id": "3B-5",
+      "category": "3.B Database-Aware Questions",
+      "description": "Prompt: \"Do I have any missing indexes?\"",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 1939ms | Source: gemini_direct | Tools: 0",
+      "durationMs": 1939,
+      "telemetry": {
+        "source": "gemini_direct",
+        "provider": "gemini",
+        "model": "gemini-3.5-flash-lite",
+        "apiRequestsCount": 1,
+        "toolCallsCount": 0,
+        "iterationsCount": 1,
+        "timings": {
+          "requestReceivedAt": "2026-11-01T14:33:07.837Z",
+          "geminiRequestStartedAt": "2026-11-01T14:33:07.837Z",
+          "geminiResponseReceivedAt": "2026-11-01T14:33:09.770Z",
+          "completedAt": "2026-11-01T14:33:09.770Z",
+          "totalBackendDurationMs": 1933
+        }
+      }
+    },
+    {
+      "id": "3B-6",
+      "category": "3.B Database-Aware Questions",
+      "description": "Prompt: \"Are there any potential schema design problems?\"",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 3630ms | Source: gemini_direct | Tools: 0",
+      "durationMs": 3630,
+      "telemetry": {
+        "source": "gemini_direct",
+        "provider": "gemini",
+        "model": "gemini-3.5-flash-lite",
+        "apiRequestsCount": 1,
+        "toolCallsCount": 0,
+        "iterationsCount": 1,
+        "timings": {
+          "requestReceivedAt": "2026-11-01T14:33:09.773Z",
+          "geminiRequestStartedAt": "2026-11-01T14:33:09.773Z",
+          "geminiResponseReceivedAt": "2026-11-01T14:33:13.399Z",
+          "completedAt": "2026-11-01T14:33:13.399Z",
+          "totalBackendDurationMs": 3626
+        }
+      }
+    },
+    {
+      "id": "3C-1",
+      "category": "3.C Complex Investigation",
+      "description": "Prompt: \"Investigate why my database might be slow. Examine…\"",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 5570ms | Source: gemini_with_tools | Tools: 1 (inspect_database_statistics)",
+      "durationMs": 5570,
+      "telemetry": {
+        "source": "gemini_with_tools",
+        "provider": "gemini",
+        "model": "gemini-3.5-flash-lite",
+        "apiRequestsCount": 2,
+        "toolCallsCount": 1,
+        "iterationsCount": 2,
+        "timings": {
+          "requestReceivedAt": "2026-11-01T14:33:13.406Z",
+          "geminiRequestStartedAt": "2026-11-01T14:33:13.406Z",
+          "geminiResponseReceivedAt": "2026-11-01T14:33:18.970Z",
+          "completedAt": "2026-11-01T14:33:18.970Z",
+          "totalBackendDurationMs": 5564
+        }
+      }
+    },
+    {
+      "id": "3C-2",
+      "category": "3.C Complex Investigation",
+      "description": "Prompt: \"Identify the three most important database optimiz…\"",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 3701ms | Source: gemini_direct | Tools: 0 ()",
+      "durationMs": 3701,
+      "telemetry": {
+        "source": "gemini_direct",
+        "provider": "gemini",
+        "model": "gemini-3.5-flash-lite",
+        "apiRequestsCount": 1,
+        "toolCallsCount": 0,
+        "iterationsCount": 1,
+        "timings": {
+          "requestReceivedAt": "2026-11-01T14:33:18.976Z",
+          "geminiRequestStartedAt": "2026-11-01T14:33:18.976Z",
+          "geminiResponseReceivedAt": "2026-11-01T14:33:22.672Z",
+          "completedAt": "2026-11-01T14:33:22.672Z",
+          "totalBackendDurationMs": 3696
+        }
+      }
+    },
+    {
+      "id": "3C-3",
+      "category": "3.C Complex Investigation",
+      "description": "Prompt: \"Check whether my foreign key columns have appropri…\"",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 3ms | Source: cached_intelligence | Tools: 0 ()",
+      "durationMs": 3,
+      "telemetry": {
+        "source": "cached_intelligence",
+        "provider": "intelligence_cache",
+        "apiRequestsCount": 0,
+        "toolCallsCount": 0,
+        "iterationsCount": 0,
+        "timings": {
+          "requestReceivedAt": "2026-11-01T14:33:22.675Z",
+          "intentClassifiedAt": "2026-11-01T14:33:22.676Z",
+          "cacheRetrievedAt": "2026-11-01T14:33:22.676Z",
+          "completedAt": "2026-11-01T14:33:22.676Z",
+          "totalBackendDurationMs": 1
+        }
+      }
+    },
+    {
+      "id": "3C-4",
+      "category": "3.C Complex Investigation",
+      "description": "Prompt: \"Look for potentially inefficient schema designs, r…\"",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 2ms | Source: cached_intelligence | Tools: 0 ()",
+      "durationMs": 2,
+      "telemetry": {
+        "source": "cached_intelligence",
+        "provider": "intelligence_cache",
+        "apiRequestsCount": 0,
+        "toolCallsCount": 0,
+        "iterationsCount": 0,
+        "timings": {
+          "requestReceivedAt": "2026-11-01T14:33:22.677Z",
+          "intentClassifiedAt": "2026-11-01T14:33:22.677Z",
+          "cacheRetrievedAt": "2026-11-01T14:33:22.677Z",
+          "completedAt": "2026-11-01T14:33:22.677Z",
+          "totalBackendDurationMs": 0
+        }
+      }
+    },
+    {
+      "id": "3C-5",
+      "category": "3.C Complex Investigation",
+      "description": "Prompt: \"If I have a query performance problem, explain exa…\"",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 3279ms | Source: gemini_direct | Tools: 0 ()",
+      "durationMs": 3279,
+      "telemetry": {
+        "source": "gemini_direct",
+        "provider": "gemini",
+        "model": "gemini-3.5-flash-lite",
+        "apiRequestsCount": 1,
+        "toolCallsCount": 0,
+        "iterationsCount": 1,
+        "timings": {
+          "requestReceivedAt": "2026-11-01T14:33:22.679Z",
+          "geminiRequestStartedAt": "2026-11-01T14:33:22.679Z",
+          "geminiResponseReceivedAt": "2026-11-01T14:33:25.956Z",
+          "completedAt": "2026-11-01T14:33:25.956Z",
+          "totalBackendDurationMs": 3277
+        }
+      }
+    },
+    {
+      "id": "4T-1",
+      "category": "4. Tool Execution (Direct)",
+      "description": "Tool: inspect_database_schema",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 87ms | Keys: database, engine, tableCount, tables",
+      "durationMs": 87
+    },
+    {
+      "id": "4T-2",
+      "category": "4. Tool Execution (Direct)",
+      "description": "Tool: inspect_table_details",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 48ms | Keys: table, schema, columns, foreignKeys",
+      "durationMs": 48
+    },
+    {
+      "id": "4T-3",
+      "category": "4. Tool Execution (Direct)",
+      "description": "Tool: inspect_table_relationships",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 36ms | Keys: table, outgoingRelationships, incomingRelationships, isJunctionTable",
+      "durationMs": 36
+    },
+    {
+      "id": "4T-4",
+      "category": "4. Tool Execution (Direct)",
+      "description": "Tool: inspect_database_health",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 34ms | Keys: healthScore, grade, baseScore, totalDeductions",
+      "durationMs": 34
+    },
+    {
+      "id": "4T-5",
+      "category": "4. Tool Execution (Direct)",
+      "description": "Tool: inspect_table_indexes",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 33ms | Keys: table, existingIndexes, foreignKeyCoverage",
+      "durationMs": 33
+    },
+    {
+      "id": "4T-6",
+      "category": "4. Tool Execution (Direct)",
+      "description": "Tool: inspect_database_statistics",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 2ms | Keys: tableStatistics",
+      "durationMs": 2
+    },
+    {
+      "id": "4T-7",
+      "category": "4. Tool Execution (Direct)",
+      "description": "Tool: explain_sql_query",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 1295ms | Keys: query, estimatedCost, scansUsed, joinsUsed",
+      "durationMs": 1295
+    },
+    {
+      "id": "4T-8",
+      "category": "4. Tool Execution (Direct)",
+      "description": "Tool: compare_query_plans",
+      "status": "FAIL",
+      "evidence": "HTTP 502 | Duration: 7ms | Keys: ",
+      "durationMs": 7
+    },
+    {
+      "id": "4T-9",
+      "category": "4. Tool Execution (Direct)",
+      "description": "Tool: analyze_normalization",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 81ms | Keys: database, tablesEvaluated, results",
+      "durationMs": 81
+    },
+    {
+      "id": "4T-10",
+      "category": "4. Tool Execution (Direct)",
+      "description": "Tool: analyze_schema_impact",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 47ms | Keys: targetTable, targetColumn, impactSeverity, dependentTablesCount",
+      "durationMs": 47
+    },
+    {
+      "id": "4T-11",
+      "category": "4. Tool Execution (Direct)",
+      "description": "Tool: suggest_indexes",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 38ms | Keys: database, totalSuggestions, suggestions",
+      "durationMs": 38
+    },
+    {
+      "id": "4T-12",
+      "category": "4. Tool Execution (Direct)",
+      "description": "Tool: generate_sql_improvement",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 31ms | Keys: error",
+      "durationMs": 31
+    },
+    {
+      "id": "4T-13",
+      "category": "4. Tool Execution (Direct)",
+      "description": "Tool: validate_sql_improvement",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 9ms | Keys: valid, status, engine, message",
+      "durationMs": 9
+    },
+    {
+      "id": "4T-14",
+      "category": "4. Tool Execution (Direct)",
+      "description": "Tool: locate_schema_object",
+      "status": "FAIL",
+      "evidence": "HTTP 502 | Duration: 33ms | Keys: ",
+      "durationMs": 33
+    },
+    {
+      "id": "4-MULTI",
+      "category": "4. Multi-Tool Investigation",
+      "description": "Comprehensive 4-step database assessment",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 2ms | Source: cached_intelligence | Tools: 0",
+      "durationMs": 2,
+      "telemetry": {
+        "source": "cached_intelligence",
+        "provider": "intelligence_cache",
+        "apiRequestsCount": 0,
+        "toolCallsCount": 0,
+        "iterationsCount": 0,
+        "timings": {
+          "requestReceivedAt": "2026-11-01T14:33:27.747Z",
+          "intentClassifiedAt": "2026-11-01T14:33:27.747Z",
+          "cacheRetrievedAt": "2026-11-01T14:33:27.747Z",
+          "completedAt": "2026-11-01T14:33:27.747Z",
+          "totalBackendDurationMs": 0
+        }
+      }
+    },
+    {
+      "id": "5M-1",
+      "category": "5. Multi-Turn Memory",
+      "description": "Turn: \"Find the three biggest performance concerns in my database.\"",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 3231ms | Source: gemini_direct | Actions: 2",
+      "durationMs": 3231,
+      "telemetry": {
+        "source": "gemini_direct",
+        "provider": "gemini",
+        "model": "gemini-3.5-flash-lite",
+        "apiRequestsCount": 1,
+        "toolCallsCount": 0,
+        "iterationsCount": 1,
+        "timings": {
+          "requestReceivedAt": "2026-11-01T14:33:27.763Z",
+          "geminiRequestStartedAt": "2026-11-01T14:33:27.763Z",
+          "geminiResponseReceivedAt": "2026-11-01T14:33:30.980Z",
+          "completedAt": "2026-11-01T14:33:30.980Z",
+          "totalBackendDurationMs": 3217
+        }
+      }
+    },
+    {
+      "id": "5M-2",
+      "category": "5. Multi-Turn Memory",
+      "description": "Turn: \"Explain the first concern in more detail.\"",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 3733ms | Source: gemini_direct | Actions: 2",
+      "durationMs": 3733,
+      "telemetry": {
+        "source": "gemini_direct",
+        "provider": "gemini",
+        "model": "gemini-3.5-flash-lite",
+        "apiRequestsCount": 1,
+        "toolCallsCount": 0,
+        "iterationsCount": 1,
+        "timings": {
+          "requestReceivedAt": "2026-11-01T14:33:30.998Z",
+          "geminiRequestStartedAt": "2026-11-01T14:33:30.998Z",
+          "geminiResponseReceivedAt": "2026-11-01T14:33:34.716Z",
+          "completedAt": "2026-11-01T14:33:34.716Z",
+          "totalBackendDurationMs": 3718
+        }
+      }
+    },
+    {
+      "id": "5M-3",
+      "category": "5. Multi-Turn Memory",
+      "description": "Turn: \"What evidence supports that conclusion?\"",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 2727ms | Source: gemini_direct | Actions: 1",
+      "durationMs": 2727,
+      "telemetry": {
+        "source": "gemini_direct",
+        "provider": "gemini",
+        "model": "gemini-3.5-flash-lite",
+        "apiRequestsCount": 1,
+        "toolCallsCount": 0,
+        "iterationsCount": 1,
+        "timings": {
+          "requestReceivedAt": "2026-11-01T14:33:34.730Z",
+          "geminiRequestStartedAt": "2026-11-01T14:33:34.730Z",
+          "geminiResponseReceivedAt": "2026-11-01T14:33:37.441Z",
+          "completedAt": "2026-11-01T14:33:37.441Z",
+          "totalBackendDurationMs": 2711
+        }
+      }
+    },
+    {
+      "id": "5M-4",
+      "category": "5. Multi-Turn Memory",
+      "description": "Turn: \"What would you recommend doing about it?\"",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 3574ms | Source: gemini_direct | Actions: 2",
+      "durationMs": 3574,
+      "telemetry": {
+        "source": "gemini_direct",
+        "provider": "gemini",
+        "model": "gemini-3.5-flash-lite",
+        "apiRequestsCount": 1,
+        "toolCallsCount": 0,
+        "iterationsCount": 1,
+        "timings": {
+          "requestReceivedAt": "2026-11-01T14:33:37.455Z",
+          "geminiRequestStartedAt": "2026-11-01T14:33:37.455Z",
+          "geminiResponseReceivedAt": "2026-11-01T14:33:41.014Z",
+          "completedAt": "2026-11-01T14:33:41.014Z",
+          "totalBackendDurationMs": 3559
+        }
+      }
+    },
+    {
+      "id": "5M-5",
+      "category": "5. Multi-Turn Memory",
+      "description": "Turn: \"Can you generate a SQL script to address that issue?\"",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 4648ms | Source: gemini_with_tools | Actions: 2",
+      "durationMs": 4648,
+      "telemetry": {
+        "source": "gemini_with_tools",
+        "provider": "gemini",
+        "model": "gemini-3.5-flash-lite",
+        "apiRequestsCount": 3,
+        "toolCallsCount": 2,
+        "iterationsCount": 3,
+        "timings": {
+          "requestReceivedAt": "2026-11-01T14:33:41.032Z",
+          "geminiRequestStartedAt": "2026-11-01T14:33:41.032Z",
+          "geminiResponseReceivedAt": "2026-11-01T14:33:45.660Z",
+          "completedAt": "2026-11-01T14:33:45.660Z",
+          "totalBackendDurationMs": 4628
+        }
+      }
+    },
+    {
+      "id": "5M-ISO",
+      "category": "5. Multi-Turn Memory",
+      "description": "Cross-conversation isolation check",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 1801ms | Isolated: true",
+      "durationMs": 1801
+    },
+    {
+      "id": "6S-1",
+      "category": "6. SQL Generation & Safety",
+      "description": "Prompt: \"Write a SELECT query to show all tables.\"",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 1403ms | Has Plan Action: true | Non-autonomous: true",
+      "durationMs": 1403,
+      "telemetry": {
+        "source": "gemini_direct",
+        "provider": "gemini",
+        "model": "gemini-3.5-flash-lite",
+        "apiRequestsCount": 1,
+        "toolCallsCount": 0,
+        "iterationsCount": 1,
+        "timings": {
+          "requestReceivedAt": "2026-11-01T14:33:47.485Z",
+          "geminiRequestStartedAt": "2026-11-01T14:33:47.486Z",
+          "geminiResponseReceivedAt": "2026-11-01T14:33:48.886Z",
+          "completedAt": "2026-11-01T14:33:48.886Z",
+          "totalBackendDurationMs": 1401
+        }
+      }
+    },
+    {
+      "id": "6S-2",
+      "category": "6. SQL Generation & Safety",
+      "description": "Prompt: \"Write a query to count rows in each table.\"",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 1949ms | Has Plan Action: true | Non-autonomous: true",
+      "durationMs": 1949,
+      "telemetry": {
+        "source": "gemini_direct",
+        "provider": "gemini",
+        "model": "gemini-3.5-flash-lite",
+        "apiRequestsCount": 1,
+        "toolCallsCount": 0,
+        "iterationsCount": 1,
+        "timings": {
+          "requestReceivedAt": "2026-11-01T14:33:48.889Z",
+          "geminiRequestStartedAt": "2026-11-01T14:33:48.889Z",
+          "geminiResponseReceivedAt": "2026-11-01T14:33:50.835Z",
+          "completedAt": "2026-11-01T14:33:50.835Z",
+          "totalBackendDurationMs": 1946
+        }
+      }
+    },
+    {
+      "id": "6S-3",
+      "category": "6. SQL Generation & Safety",
+      "description": "Prompt: \"Generate a query joining two related tables.\"",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 1774ms | Has Plan Action: true | Non-autonomous: true",
+      "durationMs": 1774,
+      "telemetry": {
+        "source": "gemini_direct",
+        "provider": "gemini",
+        "model": "gemini-3.5-flash-lite",
+        "apiRequestsCount": 1,
+        "toolCallsCount": 0,
+        "iterationsCount": 1,
+        "timings": {
+          "requestReceivedAt": "2026-11-01T14:33:50.837Z",
+          "geminiRequestStartedAt": "2026-11-01T14:33:50.838Z",
+          "geminiResponseReceivedAt": "2026-11-01T14:33:52.609Z",
+          "completedAt": "2026-11-01T14:33:52.609Z",
+          "totalBackendDurationMs": 1772
+        }
+      }
+    },
+    {
+      "id": "6S-4",
+      "category": "6. SQL Generation & Safety",
+      "description": "Prompt: \"Suggest indexes for my most important foreign keys.\"",
+      "status": "FAIL",
+      "evidence": "HTTP 200 | Duration: 4ms | Has Plan Action: false | Non-autonomous: true",
+      "durationMs": 4,
+      "telemetry": {
+        "source": "cached_intelligence",
+        "provider": "intelligence_cache",
+        "apiRequestsCount": 0,
+        "toolCallsCount": 0,
+        "iterationsCount": 0,
+        "timings": {
+          "requestReceivedAt": "2026-11-01T14:33:52.614Z",
+          "intentClassifiedAt": "2026-11-01T14:33:52.614Z",
+          "cacheRetrievedAt": "2026-11-01T14:33:52.614Z",
+          "completedAt": "2026-11-01T14:33:52.614Z",
+          "totalBackendDurationMs": 0
+        }
+      }
+    },
+    {
+      "id": "6S-5",
+      "category": "6. SQL Generation & Safety",
+      "description": "Prompt: \"Generate a script to add the recommended indexes.\"",
+      "status": "PASS",
+      "evidence": "HTTP 200 | Duration: 3581ms | Has Plan Action: true | Non-autonomous: true",
+      "durationMs": 3581,
+      "telemetry": {
+        "source": "gemini_with_tools",
+        "provider": "gemini",
+        "model": "gemini-3.5-flash-lite",
+        "apiRequestsCount": 2,
+        "toolCallsCount": 1,
+        "iterationsCount": 2,
+        "timings": {
+          "requestReceivedAt": "2026-11-01T14:33:52.617Z",
+          "geminiRequestStartedAt": "2026-11-01T14:33:52.617Z",
+          "geminiResponseReceivedAt": "2026-11-01T14:33:56.196Z",
+          "completedAt": "2026-11-01T14:33:56.196Z",
+          "totalBackendDurationMs": 3579
+        }
+      }
+    },
+    {
+      "id": "7B-Greeting",
+      "category": "7. Performance Benchmark",
+      "description": "Category: Greeting (5 trials)",
+      "status": "PASS",
+      "evidence": "Roundtrip Med: 3ms (Min: 3ms, p95: 4ms) | Backend Med: 0ms",
+      "durationMs": 3
+    },
+    {
+      "id": "7B-GeneralKnowledge",
+      "category": "7. Performance Benchmark",
+      "description": "Category: General Knowledge (5 trials)",
+      "status": "PASS",
+      "evidence": "Roundtrip Med: 4ms (Min: 4ms, p95: 4ms) | Backend Med: 0ms",
+      "durationMs": 4
+    },
+    {
+      "id": "7B-CachedDBQuestion",
+      "category": "7. Performance Benchmark",
+      "description": "Category: Cached DB Question (5 trials)",
+      "status": "PASS",
+      "evidence": "Roundtrip Med: 4ms (Min: 4ms, p95: 5ms) | Backend Med: 0ms",
+      "durationMs": 4
+    },
+    {
+      "id": "7B-DatabaseHealth",
+      "category": "7. Performance Benchmark",
+      "description": "Category: Database Health (5 trials)",
+      "status": "PASS",
+      "evidence": "Roundtrip Med: 4ms (Min: 3ms, p95: 6ms) | Backend Med: 0ms",
+      "durationMs": 4
+    },
+    {
+      "id": "7B-ComplexInvestigation",
+      "category": "7. Performance Benchmark",
+      "description": "Category: Complex Investigation (5 trials)",
+      "status": "PASS",
+      "evidence": "Roundtrip Med: 4310ms (Min: 4219ms, p95: 7462ms) | Backend Med: 0ms",
+      "durationMs": 4310
+    },
+    {
+      "id": "7B-Multi-ToolReasoning",
+      "category": "7. Performance Benchmark",
+      "description": "Category: Multi-Tool Reasoning (5 trials)",
+      "status": "PASS",
+      "evidence": "Roundtrip Med: 3729ms (Min: 3674ms, p95: 5079ms) | Backend Med: 3723ms",
+      "durationMs": 3729
+    },
+    {
+      "id": "8C-1",
+      "category": "8. Cache & Proactive Intelligence",
+      "description": "Initial background database analysis on session open",
+      "status": "PASS",
+      "evidence": "Snapshot present: Score 66/100, Tables: 8",
+      "durationMs": 0
+    },
+    {
+      "id": "8C-2",
+      "category": "8. Cache & Proactive Intelligence",
+      "description": "Cache creation and disk persistence",
+      "status": "PASS",
+      "evidence": "File exists at apps/api/data/intelligence-cache.json (Size: 927935 bytes)",
+      "durationMs": 0
+    },
+    {
+      "id": "8C-3",
+      "category": "8. Cache & Proactive Intelligence",
+      "description": "Instant cache retrieval via GET /api/copilot/intelligence",
+      "status": "PASS",
+      "evidence": "HTTP 200 in 4ms without blocking queries",
+      "durationMs": 4
+    },
+    {
+      "id": "8C-5",
+      "category": "8. Cache & Proactive Intelligence",
+      "description": "External schema modification detection via catalog refresh",
+      "status": "PASS",
+      "evidence": "Disposable table qa_stress_temp_disposable detected in snapshot: true",
+      "durationMs": 0
+    },
+    {
+      "id": "8C-6",
+      "category": "8. Cache & Proactive Intelligence",
+      "description": "Cache security: Zero credential storage on disk",
+      "status": "PASS",
+      "evidence": "Password leaks in intelligence-cache.json: NONE (PASS)",
+      "durationMs": 0
+    },
+    {
+      "id": "9F-1",
+      "category": "9. Failure & Resilience",
+      "description": "Invalid / expired database connection handling",
+      "status": "PASS",
+      "evidence": "HTTP 410 returned for nonexistent connectionId",
+      "durationMs": 0
+    },
+    {
+      "id": "9F-2",
+      "category": "9. Failure & Resilience",
+      "description": "Invalid tool name rejection with HTTP 404",
+      "status": "PASS",
+      "evidence": "HTTP 404 returned for unregistered tool name",
+      "durationMs": 0
+    },
+    {
+      "id": "9F-3",
+      "category": "9. Failure & Resilience",
+      "description": "Destructive DDL rejection in explain_sql_query tool",
+      "status": "FAIL",
+      "evidence": "Destructive query blocked: \"Rejected\"",
+      "durationMs": 0
+    },
+    {
+      "id": "11C-2",
+      "category": "11. Concurrency & Load",
+      "description": "2 simultaneous concurrent chat requests",
+      "status": "PASS",
+      "evidence": "2/2 successful in 2ms | Avg: 1ms per request",
+      "durationMs": 2
+    },
+    {
+      "id": "11C-5",
+      "category": "11. Concurrency & Load",
+      "description": "5 simultaneous concurrent chat requests",
+      "status": "PASS",
+      "evidence": "5/5 successful in 3ms | Avg: 1ms per request",
+      "durationMs": 3
+    },
+    {
+      "id": "11C-10",
+      "category": "11. Concurrency & Load",
+      "description": "10 simultaneous concurrent chat requests",
+      "status": "PASS",
+      "evidence": "10/10 successful in 6ms | Avg: 1ms per request",
+      "durationMs": 6
+    }
+  ]
+}

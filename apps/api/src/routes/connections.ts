@@ -19,6 +19,12 @@ import { executeAddColumn, executeCreateTable, executeDropTable, executeForeignK
 import { DatabaseHostValidationError } from '../services/database-host.js';
 import { RecordUpdateError, updateDatabaseRecord } from '../services/record-update-service.js';
 import { executeRecordDelete, executeRecordInsert, previewRecordDelete, previewRecordInsert, RecordMutationError } from '../services/record-mutation-service.js';
+import {
+  scheduleAnalysis,
+  invalidateAndRefresh,
+  cancelAndCleanup,
+  notifyDataChanged,
+} from '../services/intelligenceOrchestrator.js';
 
 export const connectionsRouter = Router();
 const testConnectionSchema = z.object({
@@ -39,6 +45,10 @@ connectionsRouter.post('/open', async (req, res, next) => {
   }
   try {
     const result = await openDatabaseSession(parsed.data);
+    const session = getDatabaseSession(result.connectionId);
+    if (session) {
+      scheduleAnalysis(result.connectionId, session, { reason: 'connection_opened' });
+    }
     res.json(result);
   } catch (error) {
     if (error instanceof PostgresSessionLimitError) {
@@ -102,7 +112,11 @@ connectionsRouter.post('/schema/create-table', async (req, res) => {
   const { connectionId, planId } = parsed.data;
   const session = getDatabaseSession(connectionId);
   if (!session) { res.status(410).json({ error: 'The database session expired. Test the connection again.' }); return; }
-  try { res.json(await executeCreateTable(session, connectionId, planId)); }
+  try {
+    const tableRes = await executeCreateTable(session, connectionId, planId);
+    invalidateAndRefresh(connectionId, { reason: 'ddl_create_table' });
+    res.json(tableRes);
+  }
   catch (error) {
     if (error instanceof SchemaOperationError) { res.status(error.status).json({ error: error.message }); return; }
     const message = error instanceof Error ? error.message.split('\n', 1)[0].slice(0, 500) : 'The database rejected this table definition.';
@@ -129,7 +143,11 @@ connectionsRouter.post('/schema/add-column', async (req, res) => {
   const { connectionId, planId } = parsed.data;
   const session = getDatabaseSession(connectionId);
   if (!session) { res.status(410).json({ error: 'The database session expired. Test the connection again.' }); return; }
-  try { res.json(await executeAddColumn(session, connectionId, planId)); }
+  try {
+    const colRes = await executeAddColumn(session, connectionId, planId);
+    invalidateAndRefresh(connectionId, { reason: 'ddl_add_column' });
+    res.json(colRes);
+  }
   catch (error) {
     if (error instanceof SchemaOperationError) { res.status(error.status).json({ error: error.message }); return; }
     const message = error instanceof Error ? error.message.split('\n', 1)[0].slice(0, 500) : 'The database rejected this column change.';
@@ -151,7 +169,11 @@ connectionsRouter.post('/schema/set-nullability', async (req, res) => {
   if (!parsed.success) { res.status(400).json({ error: 'Invalid column edit confirmation' }); return; }
   const { connectionId, planId } = parsed.data; const session = getDatabaseSession(connectionId);
   if (!session) { res.status(410).json({ error: 'The database session expired. Test the connection again.' }); return; }
-  try { res.json(await executeSetNullableColumn(session, connectionId, planId)); }
+  try {
+    const nullRes = await executeSetNullableColumn(session, connectionId, planId);
+    invalidateAndRefresh(connectionId, { reason: 'ddl_set_nullability' });
+    res.json(nullRes);
+  }
   catch (error) { if (error instanceof SchemaOperationError) { res.status(error.status).json({ error: error.message }); return; } const message = error instanceof Error ? error.message.split('\n', 1)[0].slice(0, 500) : 'The database rejected this column change.'; res.status(422).json({ error: message || 'The database rejected this column change.' }); }
 });
 
@@ -169,7 +191,11 @@ connectionsRouter.post('/schema/add-foreign-key', async (req, res) => {
   if (!parsed.success) { res.status(400).json({ error: 'Invalid relationship confirmation' }); return; }
   const { connectionId, planId } = parsed.data; const session = getDatabaseSession(connectionId);
   if (!session) { res.status(410).json({ error: 'The database session expired. Test the connection again.' }); return; }
-  try { res.json(await executeForeignKey(session, connectionId, planId)); }
+  try {
+    const fkRes = await executeForeignKey(session, connectionId, planId);
+    invalidateAndRefresh(connectionId, { reason: 'ddl_add_foreign_key' });
+    res.json(fkRes);
+  }
   catch (error) { if (error instanceof SchemaOperationError) { res.status(error.status).json({ error: error.message }); return; } const message = error instanceof Error ? error.message.split('\n', 1)[0].slice(0, 500) : 'The database rejected this relationship.'; res.status(422).json({ error: message || 'The database rejected this relationship.' }); }
 });
 
@@ -187,7 +213,11 @@ connectionsRouter.post('/schema/drop-table', async (req, res) => {
   if (!parsed.success) { res.status(400).json({ error: 'Invalid table deletion confirmation' }); return; }
   const { connectionId, planId } = parsed.data; const session = getDatabaseSession(connectionId);
   if (!session) { res.status(410).json({ error: 'The database session expired. Test the connection again.' }); return; }
-  try { res.json(await executeDropTable(session, connectionId, planId)); }
+  try {
+    const dropRes = await executeDropTable(session, connectionId, planId);
+    invalidateAndRefresh(connectionId, { reason: 'ddl_drop_table' });
+    res.json(dropRes);
+  }
   catch (error) { if (error instanceof SchemaOperationError) { res.status(error.status).json({ error: error.message }); return; } const message = error instanceof Error ? error.message.split('\n', 1)[0].slice(0, 500) : 'The database rejected this table deletion.'; res.status(422).json({ error: message || 'The database rejected this table deletion.' }); }
 });
 
@@ -294,7 +324,11 @@ connectionsRouter.post('/records/update', async (req, res) => {
   if (!parsed.success) { res.status(400).json({ error: 'Provide a table, all primary-key values, and between 1 and 50 changed columns.' }); return; }
   const session = getDatabaseSession(parsed.data.connectionId);
   if (!session) { res.status(410).json({ error: 'The database session expired. Test the connection again.' }); return; }
-  try { res.json(await updateDatabaseRecord(session, parsed.data)); }
+  try {
+    const updateRes = await updateDatabaseRecord(session, parsed.data);
+    notifyDataChanged(parsed.data.connectionId, parsed.data.table);
+    res.json(updateRes);
+  }
   catch (error) {
     if (error instanceof RecordUpdateError) { res.status(error.status).json({ error: error.message }); return; }
     res.status(422).json({ error: 'The database could not save this row. Check constraints, permissions, and the current row values.' });
@@ -339,7 +373,11 @@ connectionsRouter.post('/records/insert', async (req, res) => {
   if (!parsed.success) { res.status(400).json({ error: 'Review a row before inserting it.' }); return; }
   const session = getDatabaseSession(parsed.data.connectionId);
   if (!session) { res.status(410).json({ error: 'The database session expired. Test the connection again.' }); return; }
-  try { res.json(await executeRecordInsert(session, parsed.data.connectionId, parsed.data.planId)); }
+  try {
+    const insertRes = await executeRecordInsert(session, parsed.data.connectionId, parsed.data.planId);
+    notifyDataChanged(parsed.data.connectionId, '');
+    res.json(insertRes);
+  }
   catch (error) {
     if (error instanceof RecordMutationError) { res.status(error.status).json({ error: error.message }); return; }
     res.status(422).json({ error: mutationErrorMessage(error, 'insert') });
@@ -361,7 +399,11 @@ connectionsRouter.post('/records/delete', async (req, res) => {
   if (!parsed.success) { res.status(400).json({ error: 'Review a row before deleting it.' }); return; }
   const session = getDatabaseSession(parsed.data.connectionId);
   if (!session) { res.status(410).json({ error: 'The database session expired. Test the connection again.' }); return; }
-  try { res.json(await executeRecordDelete(session, parsed.data.connectionId, parsed.data.planId)); }
+  try {
+    const deleteRes = await executeRecordDelete(session, parsed.data.connectionId, parsed.data.planId);
+    notifyDataChanged(parsed.data.connectionId, '');
+    res.json(deleteRes);
+  }
   catch (error) {
     if (error instanceof RecordMutationError) { res.status(error.status).json({ error: error.message }); return; }
     res.status(422).json({ error: mutationErrorMessage(error, 'delete') });
@@ -374,6 +416,7 @@ connectionsRouter.delete('/:connectionId', async (req, res) => {
     res.status(400).json({ error: 'Invalid connection session' });
     return;
   }
+  cancelAndCleanup(parsed.data.connectionId);
   await closeDatabaseSession(parsed.data.connectionId);
   res.status(204).end();
 });

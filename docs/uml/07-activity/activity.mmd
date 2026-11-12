@@ -1,0 +1,114 @@
+flowchart TD
+    Start([● Start Workflow]) --> EnterCreds[Enter Database Host, Port, Credentials & SSL]
+    EnterCreds --> ValidateHost{Validate Host
+& Security Target}
+
+    ValidateHost -->|Forbidden Target / SSRF| RejectHost[Display Host Validation Error Alert]
+    RejectHost --> EnterCreds
+
+    ValidateHost -->|Valid Host| TestConn[Perform Ephemeral Handshake & Ping Database]
+    TestConn --> TestSuccess{Connection
+Succeeded?}
+
+    TestSuccess -->|No| ShowConnErr[Display Connection Error & Suggest Port/Host Check]
+    ShowConnErr --> EnterCreds
+
+    TestSuccess -->|Yes| OpenSession[Open In-Memory Database Session
+Generate 64-char Connection ID]
+    
+    %% Concurrency Fork
+    OpenSession --> ForkState1[=== Fork Background & Foreground Processes ===]
+    
+    %% Background Branch
+    ForkState1 --> ScheduleBg[Trigger IntelligenceOrchestrator in Background]
+    ScheduleBg --> ComputeFingerprint[Compute Schema Fingerprint MD5]
+    ScheduleBg --> RunHealthAudit[Analyze Missing Indexes, FKs & Normalization]
+    ComputeFingerprint --> CacheIntel[Persist Snapshot in intelligence-cache.json]
+    RunHealthAudit --> CacheIntel
+
+    %% Foreground Branch
+    ForkState1 --> IntrospectCatalog[Introspect Information Schema & System Catalogs]
+    IntrospectCatalog --> RenderCanvas[Render Interactive React Flow Schema Canvas]
+
+    %% Main Workspace Action Decision
+    RenderCanvas --> UserChoice{Select Workspace
+Activity}
+
+    %% Branch 1: Data Explorer
+    UserChoice -->|Data Explorer| SelectTable[Select Table from Catalog Tree]
+    SelectTable --> LoadPage[Fetch Server-Side Paged Records & Column Metas]
+    LoadPage --> RenderGrid[Render Interactive AG Grid Viewport]
+    RenderGrid --> RecordAction{Record
+Mutation?}
+    RecordAction -->|Browse / Sort / Search| RenderGrid
+    RecordAction -->|Export CSV| DownloadCsv[Generate & Download Client CSV File]
+    RecordAction -->|Insert / Edit / Delete| PrepMutation[Formulate Staged Row Mutation Payload]
+    PrepMutation --> TwoPhasePreview[Execute API Preview & Acquire One-Time Plan ID]
+    TwoPhasePreview --> UserConfirmRow{User Confirms
+Row Action?}
+    UserConfirmRow -->|Cancel| RenderGrid
+    UserConfirmRow -->|Confirm| ExecMutation[Execute Staged Mutation Plan]
+    ExecMutation --> InvalidateCache1[Notify Data Changed & Invalidate Cache]
+    InvalidateCache1 --> LoadPage
+
+    %% Branch 2: SQL Workspace
+    UserChoice -->|SQL Workspace| EnterSql[Write SQL Query in Monaco Editor]
+    EnterSql --> ValidateSql{Validate
+Read-Only AST}
+    ValidateSql -->|Contains DDL/DML/Unsafe Func| RejectSql[Display Safety Violation Error Banner]
+    RejectSql --> EnterSql
+    ValidateSql -->|Valid Read-Only| ExecSql[Execute inside READ ONLY Transaction with 8s Timeout]
+    ExecSql --> CheckSize{Payload
+< 2 MB?}
+    CheckSize -->|No| TruncateErr[Display 413 Payload Too Large Error]
+    TruncateErr --> EnterSql
+    CheckSize -->|Yes| ShowResults[Render Query Results Table in AG Grid]
+    ShowResults --> RecordHistory[Append Entry to Tab sessionStorage History]
+    RecordHistory --> UserChoice
+
+    %% Branch 3: Guided Schema Designer DDL
+    UserChoice -->|Schema Designer DDL| DesignDdl[Configure New Table / Column / Foreign Key]
+    DesignDdl --> DdlDryRun[Execute Dry-Run in Rollback Transaction]
+    DdlDryRun --> DdlValid{DDL Valid
+on Engine?}
+    DdlValid -->|No| FixDdl[Show Engine Rejection Error & Highlight Fields]
+    FixDdl --> DesignDdl
+    DdlValid -->|Yes| ShowSqlReview[Display Formatted SQL Preview Dialog with Plan ID]
+    ShowSqlReview --> ConfirmDdl{User Confirms
+Execution?}
+    ConfirmDdl -->|Cancel / Dismiss| RenderCanvas
+    ConfirmDdl -->|Confirm| ExecDdl[Execute Staged DDL Plan on Target Database]
+    ExecDdl --> InvalidateCache2[Invalidate Intelligence Cache & Trigger Re-introspection]
+    InvalidateCache2 --> IntrospectCatalog
+
+    %% Branch 4: Copilot 2.0 Investigation
+    UserChoice -->|DBFlow Copilot 2.0| AskCopilot[Submit Natural Language Database Prompt]
+    AskCopilot --> ClassifyIntent{Classify
+Prompt Intent}
+    ClassifyIntent -->|Greeting / Thanks| QuickReply[Return Fast Local Persona Response]
+    ClassifyIntent -->|General Tech Chat| DirectGemini[Query Gemini Direct without Database Tools]
+    ClassifyIntent -->|Database Specialist| AgentLoop[Run Multi-Turn Autonomous Tool Loop with 14 Tools]
+    AgentLoop --> ReviewFindings[Display Root Causes, Health Grade & SQL Recommendations]
+    QuickReply --> UserActionAi{Action
+Requested?}
+    DirectGemini --> UserActionAi
+    ReviewFindings --> UserActionAi
+    UserActionAi -->|Apply SQL Fix| EnterSql
+    UserActionAi -->|Continue Chat| AskCopilot
+    UserActionAi -->|Switch View| UserChoice
+
+    %% Disconnection & Cleanup
+    UserChoice -->|Disconnect| Disconnect[Click Disconnect Database]
+    Disconnect --> CancelJobs[Cancel Running Background Jobs]
+    CancelJobs --> ClosePool[Close pg.Pool / mysql2.Pool Connection Sockets]
+    ClosePool --> ClearSession[Evict In-Memory Session Token]
+    ClearSession --> End([◉ End Session])
+
+    classDef action fill:#eff6ff,stroke:#2563eb,stroke-width:1.5px,color:#1e3a8a;
+    classDef decision fill:#fef3c7,stroke:#d97706,stroke-width:1.5px,color:#78350f;
+    classDef terminal fill:#f8fafc,stroke:#475569,stroke-width:2px,color:#0f172a;
+    classDef bg fill:#f0fdf4,stroke:#16a34a,stroke-width:1px,color:#14532d;
+    class EnterCreds,TestConn,OpenSession,IntrospectCatalog,RenderCanvas,SelectTable,LoadPage,RenderGrid,PrepMutation,TwoPhasePreview,ExecMutation,EnterSql,ExecSql,ShowResults,RecordHistory,DesignDdl,DdlDryRun,ShowSqlReview,ExecDdl,AskCopilot,QuickReply,DirectGemini,AgentLoop,ReviewFindings,Disconnect,CancelJobs,ClosePool,ClearSession action;
+    class ValidateHost,TestSuccess,UserChoice,RecordAction,UserConfirmRow,ValidateSql,CheckSize,DdlValid,ConfirmDdl,ClassifyIntent,UserActionAi decision;
+    class Start,End,ForkState1 terminal;
+    class ScheduleBg,ComputeFingerprint,RunHealthAudit,CacheIntel,InvalidateCache1,InvalidateCache2 bg;

@@ -1,0 +1,77 @@
+sequenceDiagram
+    autonumber
+    actor User as 👤 Analyst / Developer
+    participant Editor as 📝 Monaco Editor (SqlWorkspace)
+    participant HistStore as 🗃️ QueryHistory (sessionStorage)
+    participant Route as ⚙️ ConnectionsRouter (/api/connections/query)
+    participant ConnSvc as 🔌 ConnectionService
+    participant Validator as 🛡️ validateReadOnlyQuery()
+    participant TargetDB as 🗄️ PostgreSQL Client
+    participant AGGrid as 📊 AG Grid Community Viewport
+
+    User->>Editor: Enters SQL (e.g. SELECT id, title, credits FROM courses WHERE department_id = 2)
+    User->>Editor: Presses Cmd+Enter or clicks Run Query button
+    Editor->>HistStore: appendQueryHistory({query, status: 'running', executedAt})
+    Editor->>Route: POST /api/connections/query {connectionId, query}
+
+    Route->>ConnSvc: getDatabaseSession(connectionId)
+    alt Session Expired / Missing
+        ConnSvc-->>Route: returns null
+        Route-->>Editor: HTTP 410 (The database session expired. Test connection again.)
+        Editor->>HistStore: updateQueryHistory(id, {status: 'failed', error})
+        Editor-->>User: Displays session expiration alert
+    else Session Active
+        ConnSvc->>ConnSvc: Updates session lastUsedAt timestamp
+        Route->>Validator: validateReadOnlyQuery(query, engine)
+        
+        Note over Validator: Lexical & Syntactic Security Validation
+        alt Query exceeds 50,000 characters
+            Validator-->>Route: throw ReadOnlyQueryValidationError('Enter a query under 50,000 characters.')
+            Route-->>Editor: HTTP 400 (Query exceeds maximum allowed length)
+            Editor-->>User: Displays character limit error
+        else Destructive DDL/DML or Unsafe Function Detected
+            Note right of Validator: Checks for: INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE<br/>and functions: PG_SLEEP, PG_TERMINATE_BACKEND, DBLINK, etc.
+            Validator-->>Route: throw ReadOnlyQueryValidationError('Data-changing queries are not allowed.')
+            Route-->>Editor: HTTP 400 (This statement can change database state and is forbidden in read-only queries.)
+            Editor->>HistStore: updateQueryHistory(id, {status: 'failed', error})
+            Editor-->>User: Displays safety guard alert banner
+        else Semicolon Multi-Statement Detected
+            Validator-->>Route: throw ReadOnlyQueryValidationError('Run one statement at a time.')
+            Route-->>Editor: HTTP 400 (Run one statement at a time.)
+            Editor-->>User: Prompts to execute single statement
+        else Query Validated Successfully
+            Validator-->>Route: Valid read-only query
+            Route->>ConnSvc: executeDatabaseQuery(session, query)
+            ConnSvc->>TargetDB: Acquires client from pg.Pool
+            ConnSvc->>TargetDB: BEGIN READ ONLY
+            ConnSvc->>TargetDB: SET statement_timeout = 8000
+            ConnSvc->>TargetDB: Executes parameterized read query with LIMIT 1000
+            alt Database Syntax or Execution Error
+                TargetDB-->>ConnSvc: Error: column 'credits' does not exist (SQLSTATE 42703)
+                ConnSvc->>TargetDB: ROLLBACK
+                ConnSvc->>TargetDB: Releases client back to pool
+                ConnSvc-->>Route: throws formatted database error
+                Route-->>Editor: HTTP 422 (Column does not exist in schema)
+                Editor->>HistStore: updateQueryHistory(id, {status: 'failed', error})
+                Editor-->>User: Highlights SQL syntax error in Monaco
+            else Query Success
+                TargetDB-->>ConnSvc: Returns result rows & field column metadata
+                ConnSvc->>TargetDB: COMMIT
+                ConnSvc->>TargetDB: Releases client back to pool
+                
+                %% Payload size verification
+                Note over ConnSvc: Guard: 2 MB Serialized JSON Limit Check
+                alt Response exceeds 2 MB limit
+                    ConnSvc-->>Route: throw DatabaseQueryResultSizeError()
+                    Route-->>Editor: HTTP 413 (Result exceeds 2 MB response limit. Return fewer columns.)
+                    Editor-->>User: Prompts to refine query projection
+                else Payload within 2 MB
+                    ConnSvc-->>Route: returns {columns: ['id', 'title', 'credits'], rows: [...], rowCount: 42, executionTimeMs: 14}
+                    Route-->>Editor: HTTP 200 {columns, rows, rowCount, executionTimeMs}
+                    Editor->>HistStore: updateQueryHistory(id, {status: 'success', rowCount, durationMs: 14})
+                    Editor->>AGGrid: Hydrates rowData and columnDefs
+                    AGGrid-->>User: Renders interactive tabular data with sort & copy
+                end
+            end
+        end
+    end

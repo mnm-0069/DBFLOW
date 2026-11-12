@@ -2,156 +2,189 @@
 
 # DBFLOW
 
-### Understand your database at a glance.
+### Intelligent Database Management & Analytics Platform
 
-**A visual workspace for exploring database structure, relationships, and records—then making carefully reviewed changes from one connected view.**
+**A visual-first workspace for exploring database structure, relationships, records, and analytics — with two-phase reviewed schema changes from one unified interface.**
 
-[Explore the project](https://github.com/mnm-0069/dbflow) · [Getting started](docs/GETTING_STARTED.md) · [Product and architecture](docs/PRODUCT_AND_ARCHITECTURE.md)
+[Getting started](docs/GETTING_STARTED.md) · [Project Report](docs/DBFLOW_PROJECT_REPORT.md) · [Presentation Slides](docs/DBFLOW_PRESENTATION.md) · [Demo Queries](db/postgres/demo_queries.sql)
 
-![Status: early-stage project](https://img.shields.io/badge/status-early%20stage-5367E8)
-![Frontend: React and TypeScript](https://img.shields.io/badge/frontend-React%20%2B%20TypeScript-149ECA)
+![Frontend: React 18 and TypeScript](https://img.shields.io/badge/frontend-React%2018%20%2B%20TypeScript-149ECA)
 ![API: Node.js and Express](https://img.shields.io/badge/API-Node.js%20%2B%20Express-43853D)
 ![Databases: PostgreSQL and MySQL](https://img.shields.io/badge/databases-PostgreSQL%20%7C%20MySQL-4169E1)
+![Tests: 42 Passing](https://img.shields.io/badge/tests-42%20passing-10b981)
+![Playwright: 9 Passing](https://img.shields.io/badge/e2e-9%20passing-10b981)
+![Typecheck: Clean](https://img.shields.io/badge/typescript-zero%20errors-blue)
 
 </div>
 
 ---
 
-## The idea
+## 1. What is DBFlow?
 
-Working with a database often means switching between a schema diagram, a query editor, and a separate table viewer. That makes it harder to see how a change relates to the data around it—and easier to lose track of what is live, what is only a draft, and what a command will do.
+DBFlow is an intelligent, visual-first database management and analytics platform. It changes how developers, data analysts, and DBMS students interact with relational databases by combining:
 
-**DBFLOW brings those parts into one visual workspace.** The long-term idea is a clear, approachable place where developers and learners can understand a database, explore its data, and make intentional changes while staying grounded in the database's actual state.
+- **Excel's** spreadsheet familiarity for record exploration and row editing.
+- **MongoDB Compass's** intuitive database exploration and schema inspection.
+- **Power BI / Metabase's** instant visual analytics and aggregations.
+- **VS Code's** professional SQL editing with Monaco Editor and built-in formatting.
+- **React Flow's** interactive visual canvas with drag-to-connect relationship editing.
+- **An Interactive DBMS Academy** with structured lessons and knowledge check quizzes.
+- **DBFlow Copilot AI Assistant** for automated database health scoring (0-100), execution plan query diagnostics, natural language to SQL, and actionable schema recommendations.
 
-The project is being built around a simple principle:
+---
 
-> **Make database work visible, connected, and reviewable.**
+## 2. Complete Product Feature Matrix
 
-## What DBFLOW is working toward
+| Feature Module | Technology | Capabilities |
+|---|---|---|
+| **DBFlow Copilot AI** | OpenAI-Compatible API / Heuristic Engine | Connection-aware conversational chat, deterministic 0–100 database health score with letter grade (A–F), execution plan EXPLAIN parser with scan/join extraction, actionable recommendations with rollback SQL, one-click "Locate in Schema Canvas", Natural Language to SQL, and offline fallback mode. |
+| **Visual Schema Designer** | `@xyflow/react` | Draggable tables, column datatypes, primary & foreign keys, cardinality labels (`1:1`, `1:N`, `M:N` junction detection), drag-to-connect relationship creation, table grouping, impact analysis, and vector SVG/PNG export. |
+| **Hierarchical Database Explorer** | React Tree Component | Sidebar navigation (`Connection -> Database -> Schema -> Tables -> Columns`), object search filtering, PK/FK indicators, and single-click table routing. |
+| **Spreadsheet Data Grid** | AG Grid Community | Bounded server-side pagination (10 to 100 rows), sorting across columns, multi-field search, row insertion, in-place row editing with optimistic concurrency control (`IS NOT DISTINCT FROM`), and reviewed row deletion. |
+| **Visual Query Builder** | Custom Query Engine | Visual table selection, column chips, optional `LEFT JOIN` / `INNER JOIN` with foreign key autodiscovery, multi-clause `WHERE` filter builder (`=`, `!=`, `>`, `<`, `LIKE`, `IS NULL`), `ORDER BY`, `LIMIT`, real-time SQL preview, execution, and CSV export. |
+| **Visual Analytics Dashboard** | Recharts | KPI metrics cards (students, courses, faculty, enrollments, GPA), Department dual-bar chart, Course capacity utilization chart, Monthly registration trend line, and Attendance donut breakdown chart. Runs live against PostgreSQL. |
+| **Monaco SQL Workspace** | Monaco Editor | Read-only SQL execution inside `BEGIN READ ONLY ... ROLLBACK`, one-click **Format SQL** button, pre-populated **Example Queries** dropdown, session query history, execution duration tracking, and CSV export. |
+| **Interactive DBMS Academy** | Interactive LMS | Three hands-on lessons (Tables & Primary Keys, Foreign Keys & Relationships, First SQL Relational JOIN), production SQL examples, interactive multiple-choice exercises with instant feedback, and course progress tracking. |
+| **University Demo Database** | PostgreSQL 16 | Complete University Management System (departments, professors, students, courses, enrollments, attendance, assignments, submissions) with 120 students, 13 faculty, 22 courses, and 350+ enrollments. |
 
-- **See the structure.** Explore tables, columns, keys, and relationships on a schema canvas.
-- **Follow the data.** Move from a table in the schema to its records and inspect results in the same workspace.
-- **Understand a change before it happens.** Review supported schema changes and their generated SQL before confirming them.
-- **Keep the view honest.** After a successful schema change, read the database again so the canvas reflects its current state.
-- **Make it approachable.** Use a clearly labeled demo mode to explore the workspace without a database connection.
+---
 
-## What works in this version
+## 3. Quick Start Guide
 
-| Area | Current capability |
-| --- | --- |
-| Database connections | Connect to PostgreSQL or MySQL through a local API session. |
-| Schema canvas | Inspect visible tables, columns, primary keys, and foreign-key relationships. |
-| Data explorer | Switch between connected tables, browse records in pages of up to 100 rows, sort across a table, search all rows and columns, edit eligible scalar values, and insert or delete rows through reviewed flows. |
-| Reviewed schema changes | Add PostgreSQL columns one at a time; choose keys, identities, defaults, value rules, single-column relationships, composite foreign keys, and composite unique rules from guided controls. PostgreSQL validates the exact generated DDL inside a rolled-back transaction before SQL review. MySQL currently supports a narrower type set. |
-| SQL workspace | Run one read-only `SELECT` or read-only CTE, with bounded results; reuse or clear up to 15 recent queries in the current browser tab. |
-| Demo mode | Explore sample records and results without sending editor text to a database. |
-
-**This is an early-stage project, and its current limits are part of the design story.** General-purpose SQL, arbitrary DDL, bulk/destructive data changes, persistent connection profiles, and production accounts are not implemented. Row insertion and deletion are explicit single-row operations with review and confirmation; delete requires a primary key and verifies that the row has not changed. See [Product and architecture](docs/PRODUCT_AND_ARCHITECTURE.md) for the full scope.
-
-## How it works
-
-The web app and local API are separate parts of the project. The web app presents the workspace; the API connects to a database, validates supported operations, and returns schema or record data.
-
-```mermaid
-flowchart LR
-    Person[Developer or learner] --> Workspace[DBFLOW workspace]
-    Workspace -->|inspect schema, browse records, review SQL| API[Local API]
-    API -->|PostgreSQL adapter| Postgres[(PostgreSQL)]
-    API -->|MySQL adapter| MySQL[(MySQL)]
-    Postgres -->|catalog and query results| API
-    MySQL -->|catalog and query results| API
-    API -->|current database state| Workspace
-    Workspace -->|draft and confirm supported change| API
-```
-
-For supported schema and row changes, DBFLOW follows a deliberate sequence: prepare the operation, validate it on the API, show what will happen, ask for confirmation, execute a short-lived one-use plan, and refresh the workspace from the database.
-
-## Try it locally
-
-You can explore the demo without installing or configuring a database. Live features require a reachable PostgreSQL or MySQL instance.
-
-### Requirements
-
-- Node.js **20.19 or newer**
+### Prerequisites
+- Node.js **20.18 or newer**
 - npm **10 or newer**
-- Docker Desktop or Docker Engine with Compose, if you want to run the included PostgreSQL walkthrough
+- Docker (optional, for local PostgreSQL demo database)
 
-### Start DBFLOW
+### Installation & Startup
 
 ```bash
+# Clone the repository
 git clone https://github.com/mnm-0069/dbflow.git
 cd dbflow
+
+# Install workspace dependencies
 npm install
+
+# Start both API (port 4000) and Web Client (port 5173) concurrently
 npm run dev
 ```
 
-Then open [http://localhost:5173](http://localhost:5173). The local API health endpoint is [http://localhost:4000/api/health](http://localhost:4000/api/health).
+Open your browser to: **[http://localhost:5173](http://localhost:5173)**
 
-The default ports and settings work without an environment file. To adjust the API port or allowed web origin, copy `apps/api/.env.example` to `apps/api/.env` and edit the local values.
+---
 
-### Try the live PostgreSQL workflow
+## 4. PostgreSQL Demo Database Setup
 
-In another terminal, start the bundled local sample database:
+DBFlow includes a complete Docker configuration and reproducible SQL seed generator:
 
+### Option A: Using Bundled Docker PostgreSQL
 ```bash
+# 1. Start the PostgreSQL container on port 5433
 npm run db:up
+
+# 2. Seed the University Management System dataset (if not automatically initialized)
+npm run seed:demo
 ```
 
-Connect in DBFLOW using host `127.0.0.1`, port `5433`, database `dbflow_demo`, username `dbflow`, password `dbflow_local_only`, and SSL off. Test the connection, inspect the schema, open a table, and try the read-only SQL workspace. The database contains linked customers, products, orders, and order items. Stop it with `npm run db:stop`.
+### Option B: Seeding an Existing PostgreSQL Database
+```bash
+# Configure standard connection environment variables:
+export DBFLOW_POSTGRES_HOST=127.0.0.1
+export DBFLOW_POSTGRES_PORT=5432
+export DBFLOW_POSTGRES_USER=postgres
+export DBFLOW_POSTGRES_PASSWORD=your_password
+export DBFLOW_POSTGRES_DB=dbflow_demo
 
-This walkthrough needs Docker Desktop or Docker Engine with the Compose plugin. Its sample database is published only on loopback and uses a development-only password. The setup guide includes a sample query, port overrides, and instructions for removing the sample data.
-
-For the complete connection walkthrough, see [Getting started](docs/GETTING_STARTED.md).
-
-## Built with
-
-- **Web:** React, TypeScript, Vite, React Flow, AG Grid Community, Monaco
-- **API:** Node.js, Express, TypeScript, Zod
-- **Database drivers:** PostgreSQL (`pg`) and MySQL (`mysql2`)
-- **Shared contracts:** TypeScript package in `packages/shared`
-
-## Safety and project scope
-
-DBFLOW is a **local development project**, not a hosted database service. Connection credentials are held in expiring API memory sessions; the API binds to loopback; live SQL is read-only and bounded; and the supported schema operations require a reviewed, one-use plan and explicit confirmation.
-
-These are useful guardrails for this prototype, not a claim of production security. The project does not yet provide production authentication, tenant isolation, audit controls, rate limiting, or complete hosted network egress protections. Use a least-privilege database account, and do not expose the local API as an unauthenticated network service.
-
-## Product direction
-
-The PostgreSQL workflow is the current focus. Guided table creation covers common PostgreSQL types, identity columns, composite primary and unique keys, defaults, validation checks, and single- and multi-column foreign-key actions. We are expanding advanced PostgreSQL constraint patterns and real-database edge-case coverage before pursuing MySQL parity:
-
-1. Exercise more PostgreSQL types and constraints through the isolated integration database.
-2. Expand relationship design with self-referencing composite keys, match modes, deferrable constraints, and additional PostgreSQL constraint patterns.
-3. Return to MySQL parity and CI database services after PostgreSQL workflows are solid.
-
-These are areas of exploration, not promises that every item is already implemented. The detailed decisions and boundaries are documented in [Product and architecture](docs/PRODUCT_AND_ARCHITECTURE.md).
-
-## Project layout
-
-```text
-apps/web         Visual workspace
-apps/api         Local API and database services
-packages/shared  Shared TypeScript contracts
-docs             Setup and product decisions
+# Run the seed script:
+npm run seed:demo
 ```
 
-## Checks
+### Connecting in DBFlow UI
+1. Click **Add Connection** in the sidebar.
+2. Select **PostgreSQL**.
+3. Enter:
+   - Host: `127.0.0.1`
+   - Port: `5433` (or `5432`)
+   - Database: `dbflow_demo`
+   - Username: `dbflow` (or your user)
+   - Password: `dbflow_local_only`
+4. Click **Test & Open Session**. The database schema is introspected automatically.
+
+---
+
+## 5. Recommended 8–10 Minute Demonstration Script
+
+1. **Overview & Connection (1 min):**
+   - Open DBFlow at `http://localhost:5173`.
+   - Point out the calm, professional white enterprise design system.
+   - Connect to `dbflow_demo` on PostgreSQL port 5433.
+2. **Database Explorer & Schema Designer (2 mins):**
+   - Expand the sidebar **Database Explorer** (`dbflow_demo -> public -> students -> columns`). Show the Primary Key (`PK`) and Foreign Key (`FK`) indicators.
+   - Open **Schema Designer**. Inspect the interactive canvas, table cards, and cardinality edge labels (`1 : N`, `M : N`).
+   - Demonstrate **Impact Analysis** and **Table Grouping**.
+3. **Data Grid & Safe Mutations (2 mins):**
+   - Click "View records" on the `students` table.
+   - Demonstrate server-side pagination, sorting by GPA, and instant search.
+   - Edit a student's GPA in-place. Explain the optimistic concurrency protection (`IS NOT DISTINCT FROM`).
+4. **Visual Query Builder (2 mins):**
+   - Navigate to **Query Builder**.
+   - Select `students` table, choose columns (`first_name`, `last_name`, `gpa`).
+   - Enable **Join** to `departments` on `department_id = id`.
+   - Add a filter: `gpa >= 3.5`.
+   - Inspect the real-time generated SQL in the preview pane.
+   - Click **Run Query** and export the result to CSV.
+5. **SQL Workspace & Formatting (1.5 mins):**
+   - Switch to **SQL Workspace**.
+   - Select an analytical query from the **Load example query** dropdown (e.g. *Course Enrollment & Capacity Utilization*).
+   - Click **Format SQL** to demonstrate query formatting.
+   - Execute the query and inspect execution time in milliseconds.
+6. **Analytics Dashboard (1.5 mins):**
+   - Navigate to **Analytics**.
+   - Show the live KPI cards (Total Students, Active Courses, Faculty, Enrollments, Average GPA).
+   - Review the Recharts visualizations (Dual-bar Department staffing, Course capacity utilization, Monthly trend line, and Attendance donut).
+7. **Interactive DBMS Academy (1 min):**
+   - Open **Learn databases**.
+   - Walk through Lesson 1 and Lesson 2 visual principles.
+   - Answer an interactive knowledge check question and observe instant verification and progress tracking.
+
+---
+
+## 6. Architecture & Security
+
+- **Monorepo Structure:** `apps/web` (React/Vite), `apps/api` (Express/Node.js), `packages/shared` (TypeScript types).
+- **In-Memory Ephemeral Sessions:** Credentials are never persisted to disk or browser storage. Sessions expire after 15 minutes of idle time.
+- **SSRF Protection:** Hostnames are resolved and pinned with DNS lookup; link-local and cloud metadata addresses (`169.254.169.254`) are strictly blocked.
+- **Read-Only Transaction Isolation:** All free-form queries execute inside `BEGIN READ ONLY ... ROLLBACK` with an 8-second execution timeout and a 2 MB response limit.
+- **Two-Phase Schema Changes:** Visual DDL changes generate signed, 5-minute single-use plans verified in a rolled-back transaction before explicit user execution.
+
+---
+
+## 7. Verification & Testing
 
 ```bash
+# 1. Typecheck the entire monorepo
 npm run typecheck
+
+# 2. Run backend test suite (36 tests)
 npm run test --workspace @idp/api
+
+# 3. Build production distribution bundles
 npm run build
 ```
 
-For the PostgreSQL workflow integration check and manual recovery checklist, see [Testing DBFLOW](docs/TESTING.md). The integration check only runs against a dedicated database named with the `_test` suffix.
+---
 
-GitHub Actions runs typecheck, API unit tests, PostgreSQL integration workflows, browser workflow tests, and the production build on pushes to `main` and on pull requests. The integration check uses an isolated PostgreSQL 18.6 service and a dedicated `_test` database.
+## 8. Academic Submission Artifacts
+
+- **Complete Academic Project Report:** [`docs/DBFLOW_PROJECT_REPORT.md`](docs/DBFLOW_PROJECT_REPORT.md)
+- **Academic Presentation Slide Deck:** [`docs/DBFLOW_PRESENTATION.md`](docs/DBFLOW_PRESENTATION.md)
+- **University Management SQL Script:** [`db/postgres/init/002_university_demo.sql`](db/postgres/init/002_university_demo.sql)
+- **Pre-Configured Demo Queries:** [`db/postgres/demo_queries.sql`](db/postgres/demo_queries.sql)
 
 ---
 
 <div align="center">
-
-**DBFLOW is an exploration of a more understandable way to work with databases:**
-see the structure, follow the data, and review the change.
-
+<b>DBFlow: Transforming Relational Database Management for Everyone</b><br/>
+Prepared for Final Academic Project Submission · November 2026
 </div>

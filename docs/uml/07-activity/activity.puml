@@ -1,0 +1,94 @@
+@startuml
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 11
+skinparam backgroundColor #FFFFFF
+
+start
+:Enter Database Host, Port, Credentials & SSL;
+
+if (Validate Host & Network Target?) then (forbidden SSRF target)
+  :Display Security Host Error;
+  stop
+else (valid target)
+  :Perform Connection Handshake & Ping DB;
+  if (Handshake Succeeded?) then (no)
+    :Display Connection Error;
+    stop
+  else (yes)
+    :Open In-Memory Database Session
+(Generate 64-char connectionId);
+    
+    fork
+      :Trigger Background IntelligenceOrchestrator;
+      :Compute MD5 Schema Fingerprint;
+      :Analyze Missing Indexes, FKs & Health;
+      :Cache Snapshot in intelligence-cache.json;
+    fork again
+      :Introspect System Catalogs & Tables;
+      :Render Interactive Schema Canvas;
+    end fork
+
+    repeat
+      switch (Select Workspace Activity?)
+      case ( Data Explorer )
+        :Select Table from Catalog;
+        :Fetch Paged Records & Column Metadatas;
+        :Render AG Grid Community Viewport;
+        if (Perform Row Mutation?) then (yes)
+          :Preview Two-Phase Plan;
+          if (User Confirms Plan?) then (yes)
+            :Execute Staged Row Mutation;
+            :Invalidate Cache & Refresh Records;
+          endif
+        endif
+
+      case ( SQL Workspace )
+        :Write SQL in Monaco Editor;
+        if (Validate Read-Only AST?) then (valid read-only)
+          :Execute in READ ONLY Txn (8s timeout);
+          if (Payload < 2 MB?) then (yes)
+            :Display Results in AG Grid;
+            :Save to sessionStorage History;
+          else (no)
+            :Show 413 Payload Limit Error;
+          endif
+        else (destructive or unsafe)
+          :Show Safety Violation Error Banner;
+        endif
+
+      case ( Schema Designer DDL )
+        :Design Table / Column / Foreign Key;
+        :Execute Dry-Run Transaction Rollback;
+        if (DDL Valid?) then (yes)
+          :Show Generated SQL Confirmation Dialog;
+          if (User Confirms DDL?) then (yes)
+            :Execute Staged DDL Plan;
+            :Invalidate Cache & Re-introspect;
+          endif
+        else (no)
+          :Display Engine Rejection Error;
+        endif
+
+      case ( DBFlow Copilot 2.0 )
+        :Submit Natural Language Prompt;
+        if (Classify Intent) then (greeting/ack)
+          :Return Instant Local Response (<2ms);
+        elseif (general programming) then (casual chat)
+          :Direct Gemini Call without Tools;
+        else (database investigation)
+          :Run Multi-Turn Autonomous Tool Loop (14 tools);
+          :Display Root Causes, Health Grade & SQL Recommendations;
+        endif
+      endswitch
+    repeat while (Continue Using Session?) is (yes)
+
+    :Click Disconnect Database;
+    :Cancel Active Background Jobs;
+    :Close pg.Pool / mysql2.Pool Sockets;
+    :Evict In-Memory Session Token;
+    stop
+  endif
+endif
+@enduml

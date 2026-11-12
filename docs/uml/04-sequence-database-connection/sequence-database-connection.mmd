@@ -1,0 +1,73 @@
+sequenceDiagram
+    autonumber
+    actor User as 👤 Developer
+    participant App as 🖥️ Web App (App.tsx)
+    participant Route as ⚙️ ConnectionsRouter (/api/connections)
+    participant HostVal as 🛡️ DatabaseHostValidator
+    participant ConnSvc as 🔌 ConnectionService
+    participant IntelOrch as 🔄 IntelligenceOrchestrator
+    participant TargetDB as 🗄️ PostgreSQL / MySQL DB
+    participant Canvas as 🎨 React Flow Canvas
+
+    %% Phase 1: Test Connection
+    Note over User,TargetDB: Phase 1: Credential & Network Connectivity Verification
+    User->>App: Fills credentials & clicks "Test connection"
+    App->>Route: POST /api/connections/test {engine, host, port, database, username, password, ssl}
+    Route->>HostVal: resolveDatabaseHost(host)
+    alt Invalid Host / SSRF Target Detected (e.g. 169.254.169.254)
+        HostVal-->>Route: throw DatabaseHostValidationError("Local API blocks this destination")
+        Route-->>App: HTTP 400 {error: "Local API blocks destination"}
+        App-->>User: Displays security warning
+    else Valid Target Host
+        HostVal-->>Route: returns resolved IP & clean hostname
+        Route->>ConnSvc: testDatabaseConnection(input)
+        ConnSvc->>TargetDB: Opens temporary TCP client socket
+        ConnSvc->>TargetDB: Executes SELECT version();
+        TargetDB-->>ConnSvc: Returns server version string
+        ConnSvc->>TargetDB: Closes temporary client
+        ConnSvc-->>Route: returns {success: true, engine, latencyMs, serverVersion}
+        Route-->>App: HTTP 200 {success: true, latencyMs: 24, serverVersion: "PostgreSQL 16.3..."}
+        App-->>User: Displays green checkmark & server version badge
+    end
+
+    %% Phase 2: Open In-Memory Session
+    Note over User,TargetDB: Phase 2: Session Establishment & Background Analytics
+    User->>App: Clicks "Inspect PostgreSQL schema"
+    App->>Route: POST /api/connections/open {engine, host, port, database, username, password, ssl}
+    Route->>ConnSvc: openDatabaseSession(input)
+    alt Active Session Limit Reached (> 5 active sessions)
+        ConnSvc-->>Route: throw PostgresSessionLimitError()
+        Route-->>App: HTTP 429 {error: "Maximum active sessions reached (5). Disconnect one and retry."}
+        App-->>User: Displays session limit alert
+    else Within Session Limits
+        ConnSvc->>TargetDB: Initializes connection pool (pg.Pool / mysql2.Pool)
+        ConnSvc->>ConnSvc: Generates 64-character crypto hex token (connectionId)
+        ConnSvc->>ConnSvc: Stores in postgresSessions Map with 15-min idle TTL
+        ConnSvc-->>Route: returns {connectionId, database, engine}
+        Route->>IntelOrch: scheduleAnalysis(connectionId, session, {reason: 'connection_opened'})
+        Note right of IntelOrch: Asynchronously initiates background<br/>health & index fingerprinting
+        Route-->>App: HTTP 200 {connectionId: "a3f8..."}
+    end
+
+    %% Phase 3: Schema Introspection
+    Note over User,TargetDB: Phase 3: Schema Introspection & Canvas Hydration
+    App->>Route: POST /api/connections/introspect {connectionId}
+    Route->>ConnSvc: getDatabaseSession(connectionId)
+    alt Session Expired / Not Found
+        ConnSvc-->>Route: returns undefined
+        Route-->>App: HTTP 410 {error: "Database session expired. Test connection again."}
+        App-->>User: Prompts to reconnect
+    else Active Session Found
+        Route->>ConnSvc: introspectDatabaseSchema(session)
+        ConnSvc->>TargetDB: Queries information_schema.columns & pg_type
+        TargetDB-->>ConnSvc: Returns column definitions, nullability & types
+        ConnSvc->>TargetDB: Queries pg_catalog.pg_constraint & key_column_usage
+        TargetDB-->>ConnSvc: Returns PK, Unique and Composite keys
+        ConnSvc->>TargetDB: Queries information_schema.referential_constraints
+        TargetDB-->>ConnSvc: Returns foreign key source & target mappings
+        ConnSvc->>ConnSvc: assemblePostgresSchema(cols, pks, fks, uniqueKeys, keyGroups)
+        ConnSvc-->>Route: returns {database, engine, tables: PostgresSchemaTable[]}
+        Route-->>App: HTTP 200 {database: "dbflow_demo", tables: [...]}
+        App->>Canvas: Converts tables to custom TableNodes & relationship FloatingEdges
+        Canvas-->>User: Renders interactive Entity-Relationship diagram canvas
+    end

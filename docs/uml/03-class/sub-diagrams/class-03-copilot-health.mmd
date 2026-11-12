@@ -1,0 +1,73 @@
+classDiagram
+    direction TB
+    class DatabaseHealthReport {
+        +string engine
+        +string database
+        +string analyzedAt
+        +number tableCount
+        +number totalColumns
+        +number foreignKeyCount
+        +number indexCount
+        +HealthScoreBreakdown healthScore
+        +HealthFinding[] findings
+        +HealthSummary summary
+    }
+
+    class HealthFinding {
+        +string id
+        +string title
+        +CopilotSeverity severity
+        +CopilotCategory category
+        +string table
+        +string column
+        +string problem
+        +string explanation
+        +string evidence
+        +string recommendedSolution
+        +string suggestedSql
+        +CopilotConfidence confidence
+    }
+
+    class HealthScoreBreakdown {
+        +number baseScore
+        +number totalDeductions
+        +number finalScore
+        +string grade
+        +Deduction[] deductions
+        +CategoryScores categoryScores
+    }
+
+    class CopilotChatMessage {
+        +string id
+        +string conversationId
+        +string role
+        +string content
+        +string timestamp
+        +boolean isAiGenerated
+        +AgentToolCall[] toolCalls
+        +CopilotAction[] suggestedActions
+        +CopilotTelemetry telemetry
+    }
+
+    class AgentToolCall {
+        +string id
+        +string name
+        +Record~string,unknown~ args
+        +unknown result
+        +string status
+        +string startedAt
+        +string completedAt
+        +string error
+    }
+
+    class ToolDefinition {
+        +string name
+        +string description
+        +ToolParameters parameters
+        +handler(session, args) Promise~unknown~
+    }
+
+    DatabaseHealthReport "1" *-- "1" HealthScoreBreakdown : evaluates
+    DatabaseHealthReport "1" *-- "0..*" HealthFinding : collects
+    CopilotChatMessage "1" o-- "0..*" AgentToolCall : tracks
+    AgentToolCall ..> ToolDefinition : invokes

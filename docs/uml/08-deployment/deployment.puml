@@ -1,0 +1,78 @@
+@startuml
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 11
+skinparam backgroundColor #FFFFFF
+
+node "Developer Workstation" as ClientNode <<device>> #EBF8FF {
+  node "Modern Web Browser" as Browser <<execution environment>> {
+    artifact "DBFlow React 18 SPA
+(Vite Build)" as WebApp
+    artifact "Monaco Editor Worker" as MonacoWorker
+    artifact "AG Grid Community Engine" as AGGrid
+    database "Browser sessionStorage
+(Tab Query History)" as BrowserStorage
+    WebApp --> BrowserStorage
+  }
+}
+
+node "Application Server Host" as HostNode <<device>> #F3E8FF {
+  node "Node.js v24.x Runtime" as NodeEnv <<execution environment>> {
+    component "DBFlow API Service
+(Express on 127.0.0.1:4000)" as ApiServer {
+      port "HTTP :4000" as HttpPort
+      component "Session & Pool Manager
+(15-min idle TTL)" as SessionMgr
+      component "Copilot 2.0 Agent Engine" as AgentEngine
+      component "Health & SQL Intelligence" as IntelEngine
+      component "pg.Pool / mysql2.Pool" as Drivers
+    }
+    file "Local Storage
+(/apps/api/data/)" as DiskStorage {
+      file "intelligence-cache.json" as IntelCache
+      file "copilot-conversations.json" as ConvStore
+    }
+    ApiServer --> DiskStorage
+  }
+}
+
+node "Database Server Infrastructure" as DbNode <<device>> #C6F6D5 {
+  node "PostgreSQL Instance" as PgHost <<execution environment>> {
+    database "PostgreSQL 16+ Engine
+(Port 5432)" as PgEngine
+    database "System Catalogs
+(information_schema, pg_catalog)" as PgCatalogs
+    database "User Schemas
+(dbflow_demo)" as PgUserDb
+    PgEngine --> PgCatalogs
+    PgEngine --> PgUserDb
+  }
+
+  node "MySQL Instance" as MysqlHost <<execution environment>> {
+    database "MySQL 8.0+ Engine
+(Port 3306)" as MysqlEngine
+  }
+}
+
+cloud "Google Cloud Platform" as CloudGCP #FED7D7 {
+  node "Gemini AI API Gateway" as GeminiGateway <<cloud service>> {
+    component "generativelanguage.googleapis.com
+(Port 443 HTTPS)" as GeminiAPI
+    component "Gemini 3.8 Flash / 2.5 Flash Lite" as GeminiModels
+    GeminiAPI --> GeminiModels
+  }
+}
+
+WebApp ==( HTTP / REST (JSON) : HttpPort
+Drivers ==( TCP / Socket :5432 : PgEngine
+Drivers ==( TCP / Socket :3306 : MysqlEngine
+AgentEngine ==( HTTPS / REST :443 : GeminiAPI
+
+note right of HostNode
+  **Security Boundary:**
+  • Loopback binding (127.0.0.1 only) prevents unauthorized LAN exposure.
+  • Database passwords remain strictly in memory pools (never stored on disk).
+  • DatabaseHostValidator blocks SSRF targets and cloud metadata addresses.
+end note
+@enduml

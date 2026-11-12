@@ -1,0 +1,73 @@
+classDiagram
+    direction TB
+    class ConnectionService {
+        -Map postgresSessions
+        -Map mysqlSessions
+        +testDatabaseConnection(input)
+        +openDatabaseSession(input)
+        +getDatabaseSession(connectionId)
+        +closeDatabaseSession(connectionId)
+        +introspectDatabaseSchema(session)
+        +executeDatabaseQuery(session, query)
+        +readDatabaseTablePage(session, ...)
+        +validateReadOnlyQuery(query, engine)
+    }
+
+    class SchemaService {
+        -Map schemaPlans
+        +validateCreateTableDraft(draft, engine)
+        +previewCreateTable(session, connId, draft)
+        +executeCreateTable(session, connId, planId)
+        +previewAddColumn(session, connId, sql)
+        +executeAddColumn(session, connId, planId)
+        +previewForeignKey(session, connId, draft)
+        +executeForeignKey(session, connId, planId)
+        +previewDropTable(session, connId, ...)
+        +executeDropTable(session, connId, planId)
+    }
+
+    class AgentEngine {
+        +runCopilotAgent(session, msg, history, opts)
+        +classifyUserIntent(msg, tables, history)
+        +generateLocalResponse(msg, intent, db, eng)
+    }
+
+    class Error {
+        <<standard>>
+        +string message
+        +string name
+    }
+
+    class ConnectionOrQueryError {
+        <<abstract>>
+    }
+    class CatalogOrMutationError {
+        <<abstract>>
+    }
+
+    Error <|-- ConnectionOrQueryError
+    Error <|-- CatalogOrMutationError
+
+    class DatabaseHostValidationError { }
+    class PostgresSessionLimitError { }
+    class RecordSortColumnError { }
+    class ReadOnlyQueryValidationError { }
+    class DatabaseQueryResultSizeError { }
+
+    ConnectionOrQueryError <|-- DatabaseHostValidationError
+    ConnectionOrQueryError <|-- PostgresSessionLimitError
+    ConnectionOrQueryError <|-- RecordSortColumnError
+    ConnectionOrQueryError <|-- ReadOnlyQueryValidationError
+    ConnectionOrQueryError <|-- DatabaseQueryResultSizeError
+
+    class PostgresTableNotFoundError { }
+    class PostgresResultSizeError { }
+    class SchemaOperationError { +number status }
+    class RecordUpdateError { +number status }
+    class RecordMutationError { +number status }
+
+    CatalogOrMutationError <|-- PostgresTableNotFoundError
+    CatalogOrMutationError <|-- PostgresResultSizeError
+    CatalogOrMutationError <|-- SchemaOperationError
+    CatalogOrMutationError <|-- RecordUpdateError
+    CatalogOrMutationError <|-- RecordMutationError

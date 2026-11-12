@@ -1,0 +1,103 @@
+flowchart TB
+    %% Client Tier
+    subgraph ClientTier["Frontend Client Application (apps/web)"]
+        direction TB
+        AppShell["🖥️ App Shell & View Coordinator<br/>(App.tsx)"]
+        
+        subgraph FrontendViews["Feature Workspaces"]
+            SchemaDesigner["🎨 Schema Designer<br/>(React Flow, Custom Nodes & Edges)"]
+            DataExplorer["📊 Data Explorer<br/>(AG Grid, Catalog, Drawers & Modals)"]
+            SqlWorkspace["📝 SQL Workspace<br/>(Monaco Editor, History Manager)"]
+            QueryBuilder["🧩 Visual Query Builder<br/>(Join Builder, Filters, SQL Sync)"]
+            AnalyticsView["📈 Analytics Dashboard<br/>(Performance Metrics & Charts)"]
+            CopilotView["🤖 Copilot 2.0 Interface<br/>(Chat, Health Panel, Timeline Drawer)"]
+        end
+
+        ApiClient["📡 Web API Client<br/>(Native Fetch & Error Interceptors)"]
+        AppShell --> FrontendViews
+        FrontendViews --> ApiClient
+    end
+
+    %% Shared Contracts Tier
+    subgraph SharedTier["Shared Type Library (packages/shared)"]
+        SharedTypes["📦 Core TypeScript Contracts<br/>• Connection Models & Protocols<br/>• Schema & Column Definitions<br/>• Copilot & Telemetry Types<br/>• Health Finding & Scoring Models"]
+    end
+    ClientTier -.->|imports contracts| SharedTier
+
+    %% Backend API Tier
+    subgraph BackendTier["Backend API Service (apps/api - Port 4000)"]
+        direction TB
+        HttpServer["⚙️ Express HTTP Engine<br/>(server.ts - Loopback 127.0.0.1)"]
+        
+        subgraph MiddlewareLayer["Middleware & Security Guards"]
+            CorsGuard["🛡️ CORS Policy & Origin Check"]
+            ZodValidator["🔍 Zod Payload Validators"]
+            HostGuard["🚫 DatabaseHostValidator (SSRF Guard)"]
+            ErrorHandling["⚠️ Global Error Handler Middleware"]
+        end
+
+        subgraph RoutingLayer["REST Controllers & Routes"]
+            ConnectionsRoute["/api/connections<br/>(connections.ts)"]
+            CopilotRoute["/api/copilot<br/>(copilotRoutes.ts)"]
+            HealthRoute["/api/health<br/>(health.ts)"]
+        end
+
+        subgraph CoreServices["Business Logic & Domain Services"]
+            ConnService["🔌 ConnectionService<br/>(Session Lifecycle & In-Memory Pool)"]
+            SchemaService["📐 SchemaService<br/>(Introspection, DDL Staging & Plans)"]
+            RecordService["📋 RecordMutationService & UpdateService<br/>(Optimistic Locks & Two-Phase Mutations)"]
+            AgentEngine["🧠 AgentEngine & CopilotChatService<br/>(Intent Routing, 14 DB Tools, Loop)"]
+            HealthService["🩺 DatabaseHealthAnalyzer<br/>(Deductions, Scoring, Index Audits)"]
+            SqlIntelService["⚡ SqlIntelligenceService<br/>(EXPLAIN ANALYZE, Plan Cost Scans)"]
+            IntelOrchestrator["🔄 IntelligenceOrchestrator<br/>(Debounced Jobs, Schema Fingerprinting)"]
+            IntelStore["💾 IntelligenceStore<br/>(In-Memory & JSON Persistence)"]
+            AiGateway["🌐 AiProvider Gateway<br/>(GoogleGenAI & Fallback Abstraction)"]
+        end
+
+        subgraph DatabaseDrivers["Database Driver Adapters"]
+            PgPool["🐘 PostgreSQL Pool<br/>(pg.Pool with SSL/TLS)"]
+            MysqlPool["🐬 MySQL Pool<br/>(mysql2/promise.Pool)"]
+        end
+
+        HttpServer --> MiddlewareLayer
+        MiddlewareLayer --> RoutingLayer
+        ConnectionsRoute --> ConnService
+        ConnectionsRoute --> SchemaService
+        ConnectionsRoute --> RecordService
+        CopilotRoute --> AgentEngine
+        CopilotRoute --> HealthService
+        CopilotRoute --> SqlIntelService
+        CopilotRoute --> IntelOrchestrator
+        
+        AgentEngine --> CoreServices
+        IntelOrchestrator --> HealthService
+        IntelOrchestrator --> IntelStore
+        ConnService --> DatabaseDrivers
+        SchemaService --> DatabaseDrivers
+        RecordService --> DatabaseDrivers
+    end
+
+    %% External Infrastructure Tier
+    subgraph ExternalTier["External Infrastructure & Cloud AI"]
+        PostgresInstance["🐘 PostgreSQL Database<br/>(Port 5432)"]
+        MysqlInstance["🐬 MySQL Database<br/>(Port 3306)"]
+        GeminiCloud["☁️ Google Gemini AI Platform<br/>(generativelanguage.googleapis.com)"]
+        DiskCache["📁 Local JSON Storage<br/>(intelligence-cache.json, copilot-conversations.json)"]
+    end
+
+    %% Inter-Tier Connections
+    ApiClient -->|"HTTP / REST (JSON)"| HttpServer
+    BackendTier -.->|imports contracts| SharedTier
+    PgPool -->|"TCP / TLS Socket"| PostgresInstance
+    MysqlPool -->|"TCP / TLS Socket"| MysqlInstance
+    AiGateway -->|"HTTPS / REST"| GeminiCloud
+    IntelStore -->|File I/O| DiskCache
+
+    classDef client fill:#eff6ff,stroke:#2563eb,stroke-width:1.5px,color:#1e3a8a;
+    classDef server fill:#f5f3ff,stroke:#6366f1,stroke-width:1.5px,color:#312e81;
+    classDef shared fill:#fef3c7,stroke:#d97706,stroke-width:1.5px,color:#78350f;
+    classDef external fill:#ecfdf5,stroke:#059669,stroke-width:1.5px,color:#064e3b;
+    class AppShell,FrontendViews,SchemaDesigner,DataExplorer,SqlWorkspace,QueryBuilder,AnalyticsView,CopilotView,ApiClient client;
+    class HttpServer,MiddlewareLayer,RoutingLayer,CoreServices,DatabaseDrivers server;
+    class SharedTypes shared;
+    class PostgresInstance,MysqlInstance,GeminiCloud,DiskCache external;
