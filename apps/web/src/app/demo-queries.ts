@@ -1,7 +1,4 @@
-/**
- * Pre-configured demonstration queries for DBFlow
- * Works with both the University Management System and Commerce demo databases.
- */
+// Pre-configured demonstration queries for university and commerce schemas.
 
 export type DemoQuery = {
   id: string;

@@ -1,6 +1,4 @@
-// apps/web/src/app/DatabaseIntelligenceBar.tsx
-// DBFlow Proactive Database Intelligence Status Banner
-// Displays live background analysis state, category progress, and trigger controls.
+// Status banner for background database analysis and cache freshness.
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -51,12 +49,9 @@ export function DatabaseIntelligenceBar({
         const json: IntelligenceStatusResponse = await res.json();
         setData(json);
       }
-    } catch {
-      // Non-intrusive polling failure ignored
-    }
+    } catch {}
   }, [connectionId]);
 
-  // Dynamic polling interval
   useEffect(() => {
     if (!connectionId) return;
 

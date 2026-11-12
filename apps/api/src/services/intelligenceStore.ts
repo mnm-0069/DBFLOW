@@ -1,8 +1,4 @@
-// apps/api/src/services/intelligenceStore.ts
-// Persistent intelligence cache scoped to database connection sessions.
-// Thread-safe and atomic persistence via temp file rename.
-// Strictly stores metadata, relationship graphs, index definitions, and health findings.
-// NEVER stores database passwords or credentials.
+// Disk-backed intelligence snapshot cache; never persists credentials.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -23,9 +19,7 @@ function resolveStoragePath(): string {
   return path.resolve(process.cwd(), 'data', 'intelligence-cache.json');
 }
 
-/**
- * Loads cached intelligence snapshots from disk into memory.
- */
+// Loads cached snapshots from disk into memory.
 function loadFromDisk(): void {
   try {
     const filePath = resolveStoragePath();
@@ -44,9 +38,7 @@ function loadFromDisk(): void {
   }
 }
 
-/**
- * Atomically writes the current in-memory cache to disk.
- */
+// Atomically writes cache to disk via temp file rename.
 function flushToDisk(): void {
   try {
     const filePath = resolveStoragePath();
@@ -63,12 +55,9 @@ function flushToDisk(): void {
   }
 }
 
-// Initial disk load on module import
 loadFromDisk();
 
-/**
- * Reinitializes store with optional custom path (for test isolation).
- */
+// Reinitializes store with optional custom path for tests.
 export function reinitIntelligenceStore(customFilePath?: string): void {
   if (customFilePath !== undefined) {
     activeStoragePath = customFilePath;
@@ -76,9 +65,7 @@ export function reinitIntelligenceStore(customFilePath?: string): void {
   loadFromDisk();
 }
 
-/**
- * Clears cache in memory and removes disk file (for test cleanup).
- */
+// Clears cache in memory and removes disk file.
 export function clearAllIntelligenceForTest(): void {
   intelligenceMap.clear();
   const filePath = resolveStoragePath();
@@ -89,17 +76,12 @@ export function clearAllIntelligenceForTest(): void {
   }
 }
 
-/**
- * Gets the current snapshot for a connection.
- */
+// Gets the snapshot for a connection.
 export function getIntelligence(connectionId: string): DatabaseIntelligenceSnapshot | null {
   return intelligenceMap.get(connectionId) || null;
 }
 
-/**
- * Persists or updates a snapshot in the cache.
- * Supports both saveIntelligence(snapshot) and saveIntelligence(connectionId, snapshot).
- */
+// Persists or updates a snapshot in the cache.
 export function saveIntelligence(
   snapshotOrConnId: DatabaseIntelligenceSnapshot | string,
   maybeSnapshot?: DatabaseIntelligenceSnapshot
@@ -112,9 +94,7 @@ export function saveIntelligence(
   flushToDisk();
 }
 
-/**
- * Incrementally updates category statuses or freshness state.
- */
+// Updates category statuses or freshness state.
 export function updateCategoryStatus(
   connectionId: string,
   categoryUpdates: Partial<IntelligenceCategoryStatus>,
@@ -140,9 +120,7 @@ export function updateCategoryStatus(
   return current;
 }
 
-/**
- * Removes intelligence for a closed connection.
- */
+// Removes intelligence for a closed connection.
 export function deleteIntelligence(connectionId: string): boolean {
   const existed = intelligenceMap.delete(connectionId);
   if (existed) {
@@ -151,9 +129,7 @@ export function deleteIntelligence(connectionId: string): boolean {
   return existed;
 }
 
-/**
- * Retrieves all active snapshots (without sensitive connection credentials).
- */
+// Retrieves all active snapshots without sensitive credentials.
 export function listAllIntelligence(): DatabaseIntelligenceSnapshot[] {
   return Array.from(intelligenceMap.values());
 }

@@ -1,6 +1,4 @@
-// apps/api/src/services/remediation-validation.test.ts
-// Comprehensive targeted regression & invariant tests for the 4 remediated defects,
-// SQL approval invariants, and cancellation verification.
+// Regression and invariant tests for SQL safety, read-only validation, and cancellation.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -74,9 +72,6 @@ function createSpySession(overrides: Partial<DatabaseSession> = {}) {
   };
 }
 
-// ============================================================================
-// 1. TOOL ARGUMENT VALIDATION TESTS (compare_query_plans & locate_schema_object)
-// ============================================================================
 test('Task 1.A: compare_query_plans rejects missing, null, empty, whitespace, and invalid types', async () => {
   const { session, wasQueryExecuted } = createSpySession();
   const tool = AGENT_TOOLS.compare_query_plans;
@@ -150,9 +145,6 @@ test('Task 1.B: locate_schema_object rejects missing, null, empty, whitespace, a
   assert.equal(wasQueryExecuted(), false);
 });
 
-// ============================================================================
-// 2. READ-ONLY SQL ERROR MAPPING & SECURITY INVARIANTS
-// ============================================================================
 test('Task 2: Destructive statements are rejected before execution and never reach the database', () => {
   const destructiveStatements = [
     { name: 'DROP TABLE', sql: 'DROP TABLE students;' },
@@ -184,9 +176,6 @@ test('Task 2: Destructive statements are rejected before execution and never rea
   assert.ok(validateReadOnlyQuery(validCte, 'postgres').startsWith('WITH'));
 });
 
-// ============================================================================
-// 3. INDEX-INTENT ROUTING PRECEDENCE TESTS (All 5 Prompts)
-// ============================================================================
 test('Task 3: Explicit Intent Precedence routes all five specified prompts accurately', () => {
   // Prompt A: "Explain my foreign key relationships."
   // Expected: RELATIONSHIP_GRAPH (Cached relationship intelligence)
@@ -315,9 +304,6 @@ test('Task 3.B: End-to-end agent execution for the 5 prompts produces expected r
   assert.equal(resE.content.includes('fk_enrollments_course'), false, 'Concept question must not dump ERD graph');
 });
 
-// ============================================================================
-// 4. SQL APPROVAL INVARIANTS PRESERVATION TESTS
-// ============================================================================
 test('Task 4: SQL approval invariants are strictly enforced across preview and execution', async () => {
   const { session } = createSpySession({ connectionId: 'a'.repeat(64) });
 
@@ -379,9 +365,6 @@ test('Task 4: SQL approval invariants are strictly enforced across preview and e
   assert.equal(rejectedCount, 1, 'The duplicate concurrent execution must be rejected');
 });
 
-// ============================================================================
-// 5. CANCELLATION PROPAGATION VERIFICATION
-// ============================================================================
 test('Task 5: AbortSignal stops agent execution immediately without orphaned operations', async () => {
   const { session, wasQueryExecuted } = createSpySession();
 

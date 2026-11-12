@@ -1,6 +1,4 @@
-// apps/web/src/app/CopilotChat.tsx
-// DBFlow Copilot 2.0 — Premium Autonomous Database Engineering Workspace
-// Designed with conversational simplicity (ChatGPT-style) & Linear-grade developer polish
+// Copilot chat workspace and interactive consultation interface.
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
@@ -66,7 +64,7 @@ const DEFAULT_PROMPTS = [
   'What happens if I delete a course record?',
 ];
 
-// 4 Premium Investigation Cards for Redesigned Welcome Experience
+// Investigation shortcuts for empty chat state.
 const INVESTIGATION_SHORTCUTS = [
   {
     id: 'performance',
@@ -114,7 +112,7 @@ const INVESTIGATION_SHORTCUTS = [
   },
 ];
 
-// Friendly descriptions for known database tools
+// Display labels for database tools.
 const TOOL_LABELS: Record<string, string> = {
   inspect_database_schema: 'Inspected schema tables & column types',
   inspect_table_details: 'Inspected table schema & column constraints',
@@ -132,7 +130,7 @@ const TOOL_LABELS: Record<string, string> = {
   locate_schema_object: 'Located table or foreign key schema object',
 };
 
-// Safe, lightweight SQL Syntax Tokenizer
+// Lightweight SQL syntax tokenizer.
 function highlightSql(code: string): React.ReactNode {
   const tokens = code.split(
     /(\b(?:SELECT|FROM|WHERE|JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|INNER\s+JOIN|FULL\s+JOIN|CROSS\s+JOIN|ON|USING|GROUP\s+BY|ORDER\s+BY|HAVING|LIMIT|OFFSET|UNION\s+ALL|UNION|INTERSECT|EXCEPT|INSERT\s+INTO|VALUES|UPDATE|SET|DELETE\s+FROM|DELETE|CREATE\s+INDEX|CREATE\s+TABLE|ALTER\s+TABLE|ADD\s+COLUMN|DROP\s+TABLE|DROP\s+INDEX|BEGIN|COMMIT|ROLLBACK|CONCURRENTLY|IF\s+EXISTS|IF\s+NOT\s+EXISTS|PRIMARY\s+KEY|FOREIGN\s+KEY|REFERENCES|CHECK|UNIQUE|DEFAULT|NOT\s+NULL|NULL|CASCADE|RESTRICT|AND|OR|NOT|IN|EXISTS|BETWEEN|LIKE|ILIKE|IS|AS|CASE|WHEN|THEN|ELSE|END|DISTINCT|COUNT|SUM|AVG|MIN|MAX|COALESCE|NOW)\b|--[^\n]*|'[^']*'|\b\d+\b)/gi
@@ -231,7 +229,6 @@ export function CopilotChat({
     scrollToBottom();
   }, [messages, busy]);
 
-  // Adjust textarea height dynamically
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -239,7 +236,6 @@ export function CopilotChat({
     }
   }, [input]);
 
-  // Load conversation list on connection
   useEffect(() => {
     if (!connectionId) {
       setMessages([
@@ -391,7 +387,6 @@ export function CopilotChat({
     setTimeout(() => setCopiedMsgId(null), 2000);
   };
 
-  // Stop active AI request
   const handleStopGeneration = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -460,12 +455,10 @@ export function CopilotChat({
       }
       setMessages((prev) => [...prev, botMsg]);
 
-      // If message has tool calls, expand tool activity by default
       if (botMsg.toolCalls && botMsg.toolCalls.length > 0) {
         setExpandedToolMsgIds((prev) => new Set(prev).add(botMsg.id));
       }
 
-      // Refresh conversation title if updated
       if (activeConvId) {
         fetch(`http://localhost:4000/api/copilot/conversations?connectionId=${connectionId}`)
           .then((r) => r.json())
@@ -520,14 +513,12 @@ export function CopilotChat({
     }
   };
 
-  // Filter conversations by search query
   const filteredConversations = useMemo(() => {
     if (!searchQuery.trim()) return conversations;
     const q = searchQuery.toLowerCase();
     return conversations.filter((c) => c.title.toLowerCase().includes(q));
   }, [conversations, searchQuery]);
 
-  // Is conversation in welcome state?
   const isWelcomeState = useMemo(() => {
     return messages.length === 0 || (messages.length === 1 && messages[0]?.role === 'assistant');
   }, [messages]);
@@ -590,7 +581,6 @@ export function CopilotChat({
         );
       }
 
-      // Check for Markdown table
       if (part.includes('|') && part.includes('---')) {
         const lines = part.trim().split('\n');
         const tableLines = lines.filter((l) => l.trim().startsWith('|') && l.trim().endsWith('|'));

@@ -332,8 +332,7 @@ async function openMysqlSession(input: ConnectionInput) {
   if (mysqlSessions.size >= MAX_MYSQL_SESSIONS) throw new PostgresSessionLimitError();
   const endpoint = await resolveDatabaseHost(input.host);
   const pool = mysql.createPool({
-    // Keep the original DNS name for mysql2's TLS identity check while the custom stream
-    // pins TCP to the address already checked by resolveDatabaseHost.
+    // Retain original DNS name for TLS verification while pinning TCP to the validated IP.
     host: endpoint.tlsServername ?? endpoint.address,
     port: input.port,
     database: input.database,

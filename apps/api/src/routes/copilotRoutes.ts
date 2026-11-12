@@ -1,5 +1,4 @@
-// apps/api/src/routes/copilotRoutes.ts
-// Express routes for DBFlow Copilot 2.0 AI Database Agent and Conversation Memory
+// Copilot agent and conversation routes.
 
 import { Router } from 'express';
 import { z } from 'zod';
@@ -53,7 +52,6 @@ const toolExecuteSchema = z.object({
   args: z.record(z.unknown()).optional(),
 });
 
-// GET /api/copilot/status - Check AI configuration and features
 copilotRouter.get('/status', (req, res) => {
   const config = getAiConfig();
   res.json({
@@ -74,11 +72,6 @@ copilotRouter.get('/status', (req, res) => {
   });
 });
 
-// ============================================================================
-// PROACTIVE INTELLIGENCE API
-// ============================================================================
-
-// GET /api/copilot/intelligence - Get status & prepared intelligence snapshot
 copilotRouter.get('/intelligence', (req, res) => {
   const connectionId = String(req.query.connectionId || '');
   if (!connectionId) {
@@ -88,7 +81,6 @@ copilotRouter.get('/intelligence', (req, res) => {
   res.json(status);
 });
 
-// POST /api/copilot/intelligence/refresh - Trigger on-demand background analysis refresh
 copilotRouter.post('/intelligence/refresh', (req, res) => {
   const { connectionId, force } = req.body;
   if (!connectionId) {
@@ -103,11 +95,6 @@ copilotRouter.post('/intelligence/refresh', (req, res) => {
   res.json(status);
 });
 
-// ============================================================================
-// CONVERSATIONS API
-// ============================================================================
-
-// GET /api/copilot/conversations - List conversations for active connection
 copilotRouter.get('/conversations', (req, res) => {
   const connectionId = String(req.query.connectionId || '');
   if (!connectionId) {
@@ -117,7 +104,6 @@ copilotRouter.get('/conversations', (req, res) => {
   res.json(convs);
 });
 
-// POST /api/copilot/conversations - Create a new conversation
 copilotRouter.post('/conversations', (req, res) => {
   const { connectionId, title } = req.body;
   if (!connectionId) {
@@ -127,7 +113,6 @@ copilotRouter.post('/conversations', (req, res) => {
   res.status(201).json(conv);
 });
 
-// GET /api/copilot/conversations/:id - Get conversation details
 copilotRouter.get('/conversations/:id', (req, res) => {
   const connectionId = req.query.connectionId ? String(req.query.connectionId) : undefined;
   const conv = getConversation(req.params.id, connectionId);
@@ -137,18 +122,12 @@ copilotRouter.get('/conversations/:id', (req, res) => {
   res.json(conv);
 });
 
-// DELETE /api/copilot/conversations/:id - Delete conversation
 copilotRouter.delete('/conversations/:id', (req, res) => {
   const connectionId = req.query.connectionId ? String(req.query.connectionId) : undefined;
   const success = deleteConversation(req.params.id, connectionId);
   res.json({ success });
 });
 
-// ============================================================================
-// AGENT CHAT & INVESTIGATION API
-// ============================================================================
-
-// POST /api/copilot/chat - Autonomous Agent chat with tool execution & persistence
 copilotRouter.post('/chat', async (req, res, next) => {
   const controller = new AbortController();
   res.on('close', () => {
@@ -164,7 +143,7 @@ copilotRouter.post('/chat', async (req, res, next) => {
       return res.status(410).json({ error: 'Database session has expired or does not exist.' });
     }
 
-    // Save latest user message to conversation history if conversationId provided
+    // Persist incoming prompt to conversation history.
     const userMsg = messages[messages.length - 1];
     let activeConvId = conversationId;
     if (activeConvId && userMsg && userMsg.role === 'user') {
@@ -189,7 +168,7 @@ copilotRouter.post('/chat', async (req, res, next) => {
       return;
     }
 
-    // Save assistant response to conversation history
+    // Record response to history.
     if (activeConvId) {
       addMessageToConversation(activeConvId, response);
     }
@@ -209,7 +188,6 @@ copilotRouter.post('/chat', async (req, res, next) => {
   }
 });
 
-// POST /api/copilot/tools/execute - Direct tool execution endpoint for verification
 copilotRouter.post('/tools/execute', async (req, res, next) => {
   try {
     const { connectionId, toolName, args } = toolExecuteSchema.parse(req.body);
@@ -239,7 +217,6 @@ copilotRouter.post('/tools/execute', async (req, res, next) => {
   }
 });
 
-// POST /api/copilot/health - Execute full health and performance audit
 copilotRouter.post('/health', async (req, res, next) => {
   try {
     const { connectionId } = connectionSchema.parse(req.body);
@@ -258,7 +235,6 @@ copilotRouter.post('/health', async (req, res, next) => {
   }
 });
 
-// POST /api/copilot/explain-query - Query explanation and optimization
 copilotRouter.post('/explain-query', async (req, res, next) => {
   try {
     const { connectionId, query } = explainSchema.parse(req.body);
@@ -280,7 +256,6 @@ copilotRouter.post('/explain-query', async (req, res, next) => {
   }
 });
 
-// POST /api/copilot/nl-to-sql - Natural language to SQL query generator
 copilotRouter.post('/nl-to-sql', async (req, res, next) => {
   try {
     const { connectionId, prompt } = nlToSqlSchema.parse(req.body);

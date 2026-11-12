@@ -1,6 +1,4 @@
-// apps/api/src/services/conversationStore.ts
-// Durable conversation persistence scoped to user and database sessions
-// Survives API process restarts and prevents cross-user / cross-connection leakage.
+// Persists Copilot conversations across server restarts.
 
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
@@ -19,13 +17,10 @@ function resolveStoragePath(): string {
   if (process.env.COPILOT_CONVERSATIONS_FILE) {
     return path.resolve(process.env.COPILOT_CONVERSATIONS_FILE);
   }
-  // Default to data directory in project root or current working directory
   return path.resolve(process.cwd(), 'data', 'copilot-conversations.json');
 }
 
-/**
- * Loads conversations from disk into memory.
- */
+// Loads conversations from disk into memory.
 function loadFromDisk(): void {
   try {
     const filePath = resolveStoragePath();
@@ -44,9 +39,7 @@ function loadFromDisk(): void {
   }
 }
 
-/**
- * Atomically flushes in-memory conversations to disk.
- */
+// Atomically flushes in-memory conversations to disk.
 function flushToDisk(): void {
   try {
     const filePath = resolveStoragePath();
@@ -63,12 +56,9 @@ function flushToDisk(): void {
   }
 }
 
-// Initial load on module evaluation
 loadFromDisk();
 
-/**
- * Reinitializes the store, optionally with a custom storage file (for test isolation).
- */
+// Reinitializes store with optional custom path for tests.
 export function reinitConversationStore(customFilePath?: string): void {
   if (customFilePath !== undefined) {
     activeStoragePath = customFilePath;
@@ -76,9 +66,7 @@ export function reinitConversationStore(customFilePath?: string): void {
   loadFromDisk();
 }
 
-/**
- * Clears in-memory and on-disk conversations for testing purposes.
- */
+// Clears conversations for testing.
 export function clearAllConversationsForTest(): void {
   conversations.clear();
   const filePath = resolveStoragePath();
@@ -130,7 +118,7 @@ export function createConversation(
 export function listConversations(connectionId: string, userId?: string): ConversationSummary[] {
   const result: ConversationSummary[] = [];
   for (const conv of conversations.values()) {
-    // Strictly isolate by connectionId, and by userId if provided
+    // Isolate by connectionId and userId.
     if (conv.connectionId === connectionId) {
       if (userId && conv.userId && conv.userId !== userId) {
         continue;
@@ -147,7 +135,6 @@ export function listConversations(connectionId: string, userId?: string): Conver
     }
   }
 
-  // Sort descending by updatedAt
   return result.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
@@ -159,7 +146,6 @@ export function getConversation(
   const conv = conversations.get(conversationId);
   if (!conv) return undefined;
 
-  // Strict boundary check
   if (connectionId && conv.connectionId !== connectionId) {
     return undefined;
   }
@@ -176,7 +162,6 @@ export function addMessageToConversation(
 ): ConversationDetail {
   let conv = conversations.get(conversationId);
   if (!conv) {
-    // If conversation does not exist, recreate one
     conv = createConversation('unknown', 'New Consultation');
   }
 
@@ -186,7 +171,7 @@ export function addMessageToConversation(
   });
   conv.updatedAt = new Date().toISOString();
 
-  // If this is the first user message, generate title from content
+  // Generate title from first user message.
   if (message.role === 'user' && conv.title === 'New Database Consultation') {
     const cleanTitle = message.content.replace(/[#*`\n]/g, ' ').trim();
     conv.title = cleanTitle.length > 38 ? `${cleanTitle.slice(0, 35)}...` : cleanTitle;
@@ -204,7 +189,6 @@ export function deleteConversation(
   const conv = conversations.get(conversationId);
   if (!conv) return false;
 
-  // Prevent cross-connection or cross-user deletion
   if (connectionId && conv.connectionId !== connectionId) {
     return false;
   }

@@ -212,10 +212,6 @@ export type CopilotStatusResponse = {
   };
 };
 
-// ============================================================================
-// PROACTIVE DATABASE INTELLIGENCE ENGINE TYPES
-// ============================================================================
-
 export type IntelligenceFreshnessState = 'fresh' | 'updating' | 'stale' | 'failed';
 
 export type CategoryStatus = 'pending' | 'running' | 'ready' | 'failed';

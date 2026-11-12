@@ -1,6 +1,4 @@
-// apps/api/src/services/aiProvider.ts
-// Multi-provider AI service supporting Google Gemini natively via @google/genai,
-// and OpenAI-compatible endpoints (FreeLLMAPI, Ollama, OpenAI, vLLM).
+// Multi-provider AI service supporting Gemini and OpenAI-compatible endpoints.
 
 import { GoogleGenAI } from '@google/genai';
 
@@ -16,20 +14,16 @@ export interface ChatMessage {
   content: string;
 }
 
-/**
- * Returns current AI configuration based on environment variables.
- * Never exposes API key secrets.
- */
+// Returns current AI configuration without exposing secrets.
 export function getAiConfig(): AiConfig {
   const geminiKey = process.env.GEMINI_API_KEY?.trim();
   const freeLlmKey = process.env.FREELLMAPI_API_KEY?.trim();
   const genericApiKey = process.env.AI_API_KEY?.trim();
   const requestedProvider = process.env.AI_PROVIDER?.toLowerCase().trim();
 
-  // 1. Google Gemini as Primary Provider
+  // Gemini provider configuration.
   if (requestedProvider === 'gemini' || (!requestedProvider && geminiKey)) {
     const rawModel = process.env.GEMINI_MODEL?.trim();
-    // Resolve 'auto' to current active flagship Gemini model
     const model = !rawModel || rawModel === 'auto' ? 'gemini-3.8-flash' : rawModel;
     return {
       configured: Boolean(geminiKey),
@@ -39,7 +33,7 @@ export function getAiConfig(): AiConfig {
     };
   }
 
-  // 2. FreeLLMAPI as Secondary Provider (when explicitly requested or AI_PROVIDER=freellmapi)
+  // FreeLLMAPI secondary provider.
   if (requestedProvider === 'freellmapi') {
     const apiKey = freeLlmKey || genericApiKey;
     const baseUrl = (process.env.AI_BASE_URL?.trim() || 'https://api.freellmapi.com/v1').replace(/\/+$/, '');
@@ -52,7 +46,7 @@ export function getAiConfig(): AiConfig {
     };
   }
 
-  // 3. Generic OpenAI-compatible Provider
+  // Generic OpenAI-compatible provider.
   if (genericApiKey) {
     const baseUrl = (process.env.AI_BASE_URL?.trim() || 'https://api.openai.com/v1').replace(/\/+$/, '');
     const model = process.env.AI_MODEL?.trim() || 'gpt-4o-mini';
@@ -64,7 +58,7 @@ export function getAiConfig(): AiConfig {
     };
   }
 
-  // 4. Unconfigured / Offline Heuristic Mode
+  // Fallback to offline heuristic mode.
   return {
     configured: false,
     provider: 'none',
@@ -77,10 +71,7 @@ export function isAiConfigured(): boolean {
   return getAiConfig().configured;
 }
 
-/**
- * Returns an authenticated GoogleGenAI client when configured.
- * Throws actionable error if unconfigured.
- */
+// Returns an authenticated GoogleGenAI client.
 export function getGeminiClient(): GoogleGenAI {
   const geminiKey = process.env.GEMINI_API_KEY?.trim();
   if (!geminiKey) {
@@ -91,9 +82,7 @@ export function getGeminiClient(): GoogleGenAI {
   return new GoogleGenAI({ apiKey: geminiKey });
 }
 
-/**
- * Normalizes error messages from Gemini API or network failures
- */
+// Normalizes error messages from provider APIs and network failures.
 export function normalizeAiError(err: any, provider: string): string {
   const msg = err?.message || String(err);
   if (/API_KEY_INVALID|invalid api key|401/i.test(msg)) {
@@ -114,9 +103,7 @@ export function normalizeAiError(err: any, provider: string): string {
   return `${provider.toUpperCase()} Error: ${msg}`;
 }
 
-/**
- * Fallback chat completion for OpenAI-compatible endpoints
- */
+// Fallback chat completion for OpenAI-compatible endpoints.
 export async function callAiChatCompletion(
   messages: ChatMessage[],
   options: { maxTokens?: number; temperature?: number; timeoutMs?: number } = {}

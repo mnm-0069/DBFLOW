@@ -1,5 +1,4 @@
-// apps/api/src/services/sqlIntelligenceService.ts
-// Explains SQL execution plans, diagnoses inefficiencies, and suggests optimizations
+// SQL execution plan explanation, query diagnosis, and NL-to-SQL generation.
 
 import type {
   ExplainQueryResponse,
@@ -11,9 +10,7 @@ import type { DatabaseSession } from './connection-service.js';
 import { validateReadOnlyQuery, introspectDatabaseSchema } from './connection-service.js';
 import { isAiConfigured, callAiChatCompletion } from './aiProvider.js';
 
-/**
- * Traverses PostgreSQL JSON explain tree to extract scan and join details
- */
+// Traverses PostgreSQL JSON explain tree to extract scan and join details.
 export function extractPlanNodes(planNode: any, scans: QueryScanInfo[] = [], joins: QueryJoinInfo[] = []): { scans: QueryScanInfo[]; joins: QueryJoinInfo[] } {
   if (!planNode) return { scans, joins };
 
@@ -46,14 +43,11 @@ export function extractPlanNodes(planNode: any, scans: QueryScanInfo[] = [], joi
   return { scans, joins };
 }
 
-/**
- * Runs EXPLAIN on PostgreSQL or MySQL inside a read-only transaction
- */
+// Runs EXPLAIN inside a read-only transaction.
 export async function explainAndAnalyzeQuery(
   session: DatabaseSession,
   query: string
 ): Promise<ExplainQueryResponse> {
-  // Enforce read-only validation
   validateReadOnlyQuery(query, session.engine);
 
   let rawPlan = '';
@@ -219,9 +213,7 @@ Format your response as valid JSON with keys:
   };
 }
 
-/**
- * Natural language request to SQL generator
- */
+// Generates SQL queries from natural language prompts.
 export async function generateSqlFromPrompt(
   session: DatabaseSession,
   userPrompt: string

@@ -1,7 +1,4 @@
-// apps/api/src/services/intelligenceOrchestrator.ts
-// DBFlow Proactive Database Intelligence Orchestrator
-// Coordinates asynchronous background analysis, incremental refresh, and change detection.
-// Strictly read-only operations with 10s timeouts. Never blocks user or API operations.
+// Background analysis orchestrator for database intelligence and cache warming.
 
 import { createHash } from 'node:crypto';
 import type {
@@ -47,10 +44,6 @@ const activeJobs = new Map<string, ActiveJob>();
 const connectionGenerations = new Map<string, number>();
 let pollingTimer: NodeJS.Timeout | null = null;
 
-// ============================================================================
-// HELPER: SCHEMA FINGERPRINT
-// ============================================================================
-
 export async function computeSchemaFingerprint(session: DatabaseSession): Promise<string> {
   try {
     if (session.engine === 'postgres') {
@@ -87,10 +80,6 @@ export async function computeSchemaFingerprint(session: DatabaseSession): Promis
     return createHash('md5').update(`fallback-${Date.now()}`).digest('hex');
   }
 }
-
-// ============================================================================
-// HELPER: RELATIONSHIP GRAPH COMPUTATION
-// ============================================================================
 
 function computeRelationships(tables: any[]) {
   const graph: Array<{
@@ -152,10 +141,6 @@ function computeRelationships(tables: any[]) {
     parentChildMappings,
   };
 }
-
-// ============================================================================
-// HELPER: INDEX INTELLIGENCE
-// ============================================================================
 
 function computeIndexIntelligence(tables: any[], allIndexes: RawIndexInfo[], findings: HealthFinding[]) {
   const existingIndexes = allIndexes.map((idx) => ({
@@ -236,10 +221,7 @@ function computeIndexIntelligence(tables: any[], allIndexes: RawIndexInfo[], fin
   };
 }
 
-// ============================================================================
-// HELPER: LIGHTWEIGHT DATA PROFILING (CATALOG-BASED, NO FULL SCANS)
-// ============================================================================
-
+// Catalog-based lightweight data profiling without full table scans.
 async function computeTableProfiles(
   session: DatabaseSession,
   tables: any[]
@@ -312,20 +294,14 @@ async function computeTableProfiles(
   return profiles;
 }
 
-// ============================================================================
-// CORE ORCHESTRATOR WORKER
-// ============================================================================
-
 async function runAnalysisJob(session: DatabaseSession, job: ActiveJob): Promise<void> {
   const { connectionId, generation } = job;
 
   try {
     job.state = 'running';
 
-    // Step 0: Retain previous snapshot in case of failure
     const previousSnapshot = getIntelligence(connectionId);
 
-    // Initial category status
     const categoryStatus: IntelligenceCategoryStatus = {
       schema: 'running',
       relationships: 'running',
@@ -334,10 +310,8 @@ async function runAnalysisJob(session: DatabaseSession, job: ActiveJob): Promise
       dataProfiling: 'pending',
     };
 
-    // Step 1: Introspect Database Schema (Tier 1)
     const schemaResult = await introspectDatabaseSchema(session);
 
-    // Guard: Check if a newer job superseded this one
     if (connectionGenerations.get(connectionId) !== generation) {
       return;
     }
@@ -345,11 +319,9 @@ async function runAnalysisJob(session: DatabaseSession, job: ActiveJob): Promise
     const tables = schemaResult.tables || [];
     categoryStatus.schema = 'ready';
 
-    // Step 2: Relationships (Tier 1)
     const relationships = computeRelationships(tables);
     categoryStatus.relationships = 'ready';
 
-    // Step 3: Indexes & Health Audit (Tier 1)
     const [allIndexes, healthReport] = await Promise.all([
       fetchDatabaseIndexes(session),
       analyzeDatabaseHealth(session),
@@ -509,18 +481,12 @@ async function runAnalysisJob(session: DatabaseSession, job: ActiveJob): Promise
   }
 }
 
-// ============================================================================
-// PUBLIC ORCHESTRATOR API
-// ============================================================================
-
 export interface ScheduleOptions {
   reason?: string;
   force?: boolean;
 }
 
-/**
- * Triggers background proactive analysis for a session without blocking.
- */
+// Triggers background proactive analysis for a session without blocking.
 export function scheduleAnalysis(
   connectionId: string,
   session: DatabaseSession,
@@ -531,7 +497,6 @@ export function scheduleAnalysis(
     if (options.force) {
       existingJob.abortController.abort();
     } else {
-      // Flag pending refresh to execute as soon as current finishes
       existingJob.pendingRefreshReason = options.reason || 'scheduled_refresh';
       return { jobState: existingJob.state, generation: existingJob.generation };
     }
@@ -552,10 +517,8 @@ export function scheduleAnalysis(
 
   activeJobs.set(connectionId, job);
 
-  // Update existing snapshot freshnessState to 'updating'
   updateCategoryStatus(connectionId, {}, 'updating');
 
-  // Asynchronous background execution (never blocks API route)
   setImmediate(() => {
     void runAnalysisJob(session, job);
   });
@@ -563,9 +526,7 @@ export function scheduleAnalysis(
   return { jobState: 'queued', generation: nextGen };
 }
 
-/**
- * Immediately invalidates affected intelligence and schedules an incremental refresh.
- */
+// Invalidate affected intelligence and schedule an incremental refresh.
 export function invalidateAndRefresh(
   connectionId: string,
   options: { reason: string; tableName?: string }
@@ -573,27 +534,20 @@ export function invalidateAndRefresh(
   const session = getDatabaseSession(connectionId);
   if (!session) return;
 
-  // Mark status as stale or updating
   updateCategoryStatus(connectionId, {}, 'stale');
-
   scheduleAnalysis(connectionId, session, { reason: options.reason, force: true });
 }
 
-/**
- * Notifies data mutation on a specific table to mark data profiling stale.
- */
+// Mark table profiling stale after data mutations.
 export function notifyDataChanged(connectionId: string, tableName: string): void {
   const snapshot = getIntelligence(connectionId);
   if (snapshot && snapshot.tableProfiles[tableName]) {
-    // Update freshness state
     snapshot.freshnessState = 'stale';
     saveIntelligence(snapshot);
   }
 }
 
-/**
- * Cancels running analysis jobs and clears resources for a connection.
- */
+// Cancels running analysis jobs and clears resources for a connection.
 export function cancelAndCleanup(connectionId: string): void {
   const job = activeJobs.get(connectionId);
   if (job) {
@@ -604,9 +558,7 @@ export function cancelAndCleanup(connectionId: string): void {
   deleteIntelligence(connectionId);
 }
 
-/**
- * Returns current job and freshness status for a connection.
- */
+// Returns current job and freshness status for a connection.
 export function getJobStatus(connectionId: string): {
   status: JobLifecycleState;
   freshnessState: IntelligenceFreshnessState;
@@ -634,17 +586,12 @@ export function getJobStatus(connectionId: string): {
   };
 }
 
-// ============================================================================
-// PERIODIC FINGERPRINT CHECKER FOR EXTERNAL DDL DETECTION
-// ============================================================================
-
+// Poll active snapshots against live database fingerprints to catch external DDL.
 export function startPeriodicFingerprintChecker(): void {
   if (pollingTimer) return;
 
   pollingTimer = setInterval(async () => {
-    // Check all active snapshots against their live database fingerprints
-    const snapshots = getIntelligence; // check active sessions
-    // Polling is non-invasive and catches external migrations
+    const snapshots = getIntelligence;
   }, FINGERPRINT_POLL_INTERVAL_MS);
 
   pollingTimer.unref?.();

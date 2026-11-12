@@ -1,6 +1,4 @@
-// apps/api/src/services/copilot-reliability.test.ts
-// Comprehensive reliability & resilience test suite for DBFlow Copilot
-// Tests provider failure modes, store durability, limits, and concurrency using controlled mocks.
+// Reliability and resilience test suite for provider failure modes, store durability, and limits.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -36,9 +34,6 @@ function createMockSession(overrides: Partial<DatabaseSession> = {}): DatabaseSe
   } as DatabaseSession;
 }
 
-// ============================================================================
-// 1. GEMINI API TIMEOUT (MOCK-BASED)
-// ============================================================================
 test('Reliability 1: Gemini API timeout triggers graceful fallback to offline heuristic engine', async () => {
   const session = createMockSession();
 
@@ -57,9 +52,6 @@ test('Reliability 1: Gemini API timeout triggers graceful fallback to offline he
   assert.ok(['offline_heuristic', 'heuristic_agent', 'gemini', 'gemini_with_tools', 'gemini_direct'].includes(response.telemetry?.provider || ''));
 });
 
-// ============================================================================
-// 2. GEMINI RATE LIMIT (429) (MOCK-BASED)
-// ============================================================================
 test('Reliability 2: Gemini 429 quota exhaustion is handled without unhandled exception', async () => {
   const session = createMockSession();
 
@@ -76,9 +68,6 @@ test('Reliability 2: Gemini 429 quota exhaustion is handled without unhandled ex
   assert.equal(response.role, 'assistant');
 });
 
-// ============================================================================
-// 3. GEMINI PROVIDER UNAVAILABLE (503 / NETWORK ERROR) (MOCK-BASED)
-// ============================================================================
 test('Reliability 3: Gemini provider unavailability degrades gracefully to heuristic mode', async () => {
   const session = createMockSession();
 
@@ -95,9 +84,6 @@ test('Reliability 3: Gemini provider unavailability degrades gracefully to heuri
   assert.equal(typeof response.content, 'string');
 });
 
-// ============================================================================
-// 4. DATABASE CONNECTION INTERRUPTION DURING TOOL EXECUTION
-// ============================================================================
 test('Reliability 4: Database interruption during tool execution returns structured error, not crash', async () => {
   // Session whose pool throws ECONNRESET on query
   const brokenSession = createMockSession({
@@ -125,9 +111,6 @@ test('Reliability 4: Database interruption during tool execution returns structu
   }
 });
 
-// ============================================================================
-// 5. AGENT CANCELLATION HANDLING
-// ============================================================================
 test('Reliability 5: Agent options accept lifecycle parameters without leaking state', async () => {
   const session = createMockSession();
   const activities: any[] = [];
@@ -144,9 +127,6 @@ test('Reliability 5: Agent options accept lifecycle parameters without leaking s
   assert.equal(response.isAiGenerated, false);
 });
 
-// ============================================================================
-// 6. AGENT ITERATION LIMIT
-// ============================================================================
 test('Reliability 6: Agent iteration limit bounds execution and terminates cleanly', async () => {
   const session = createMockSession();
 
@@ -163,9 +143,6 @@ test('Reliability 6: Agent iteration limit bounds execution and terminates clean
   assert.ok(response.telemetry.iterationsCount <= 1);
 });
 
-// ============================================================================
-// 7. DUPLICATE TOOL CALLS
-// ============================================================================
 test('Reliability 7: Duplicate sequential tool calls execute deterministically without state corruption', async () => {
   const session = createMockSession();
   const tool = AGENT_TOOLS.inspect_database_schema;
@@ -178,9 +155,6 @@ test('Reliability 7: Duplicate sequential tool calls execute deterministically w
   assert.deepEqual(res1, res2);
 });
 
-// ============================================================================
-// 8. CACHE FILE MISSING
-// ============================================================================
 test('Reliability 8: Missing intelligence cache file initializes empty store without throwing', () => {
   const nonExistentPath = path.join(os.tmpdir(), `nonexistent-cache-${Date.now()}.json`);
   if (fs.existsSync(nonExistentPath)) fs.unlinkSync(nonExistentPath);
@@ -193,9 +167,6 @@ test('Reliability 8: Missing intelligence cache file initializes empty store wit
   assert.equal(result, null);
 });
 
-// ============================================================================
-// 9. CACHE FILE CORRUPTION
-// ============================================================================
 test('Reliability 9: Corrupted intelligence cache file recovers gracefully without crashing process', () => {
   const corruptedPath = path.join(os.tmpdir(), `corrupted-cache-${Date.now()}.json`);
   fs.writeFileSync(corruptedPath, '{{BAD_JSON_CONTENT:::;;;', 'utf-8');
@@ -212,9 +183,6 @@ test('Reliability 9: Corrupted intelligence cache file recovers gracefully witho
   }
 });
 
-// ============================================================================
-// 10. API RESTART PERSISTENCE
-// ============================================================================
 test('Reliability 10: Intelligence cache persists snapshots across simulated API restart', () => {
   const restartPath = path.join(os.tmpdir(), `restart-cache-${Date.now()}.json`);
 
@@ -267,9 +235,6 @@ test('Reliability 10: Intelligence cache persists snapshots across simulated API
   }
 });
 
-// ============================================================================
-// 11. CONCURRENT GEMINI-POWERED REQUESTS (PARALLEL SIMULATION)
-// ============================================================================
 test('Reliability 11: Concurrent agent requests execute in parallel without cross-talk or race conditions', async () => {
   const session1 = createMockSession({ connectionId: 'conn-p1' });
   const session2 = createMockSession({ connectionId: 'conn-p2' });

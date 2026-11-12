@@ -1,6 +1,4 @@
-// apps/api/src/services/hybrid-intelligence.test.ts
-// Comprehensive Test Suite for DBFlow Copilot 2.0 Hybrid Conversational AI Architecture
-// Validates Path A (Local), Path B (Conversational Gemini / Offline), Path C (Database Specialist), and Multi-turn context.
+// Tests for Copilot hybrid conversational architecture, intent routing, and multi-turn context.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -122,9 +120,6 @@ const mockSnapshot: any = {
 
 saveIntelligence('conn-hybrid-test', mockSnapshot);
 
-// ============================================================================
-// 1. PATH A: LIGHTWEIGHT LOCAL RESPONSES
-// ============================================================================
 test('Path A: Formulaic messages (Greetings, Thanks, Goodbye, Acknowledgements) execute locally in <50ms with 0 tools', async () => {
   const localPrompts = [
     { text: 'Hello!', expectedIntent: 'GREETING', expectedWord: 'DBFlow Copilot 2.0' },
@@ -150,9 +145,6 @@ test('Path A: Formulaic messages (Greetings, Thanks, Goodbye, Acknowledgements) 
   }
 });
 
-// ============================================================================
-// 2. PATH B: GENERAL CONVERSATIONAL INTELLIGENCE & PROGRAMMING HELP
-// ============================================================================
 test('Path B: Casual conversation & programming questions execute with 0 database tools', async () => {
   const casualQueries = [
     'Can you swim?',
@@ -189,9 +181,6 @@ test('Path B: Casual conversation & programming questions execute with 0 databas
   }
 });
 
-// ============================================================================
-// 3. PATH C: AUTONOMOUS DATABASE SPECIALIST
-// ============================================================================
 test('Path C: Database questions route to database specialist with tools and cache', async () => {
   // Test 3.1: Missing index analysis
   const idxRes = await runCopilotAgent(testSession, 'Find missing indexes.', [], { connectionId: 'conn-hybrid-test' });
@@ -220,9 +209,6 @@ test('Path C: Database questions route to database specialist with tools and cac
   assert.equal(hasPlanAction, true, 'Explicit SQL generation must attach preview_plan action');
 });
 
-// ============================================================================
-// 4. MULTI-TURN CONTEXT CONTINUITY & TOPIC SWITCHING
-// ============================================================================
 test('Multi-turn Context: Preserves investigation context, allows clean casual interruption, and resumes database context', async () => {
   const history: Array<{ role: 'user' | 'assistant'; content: string }> = [];
 
@@ -255,9 +241,6 @@ test('Multi-turn Context: Preserves investigation context, allows clean casual i
   assert.equal(turn4Intent, 'AGENT_INVESTIGATION', 'Resumption of database topic must route to AGENT_INVESTIGATION');
 });
 
-// ============================================================================
-// 5. INTENT ROUTER PRECISION
-// ============================================================================
 test('Intent Router: Accurately separates conceptual categories without false positives', () => {
   // Non-database conceptual queries containing SQL/database words must NOT trigger live investigations
   assert.equal(classifyUserIntent('What is the difference between SQL and NoSQL?'), 'GENERAL_CONCEPT');

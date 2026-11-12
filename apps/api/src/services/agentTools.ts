@@ -1,5 +1,4 @@
-// apps/api/src/services/agentTools.ts
-// Comprehensive database tool implementations for DBFlow Copilot AI Agent
+// Database tools exposed to Copilot agent with read-only guarantees.
 
 import type { DatabaseSession } from './connection-service.js';
 import {
@@ -26,9 +25,7 @@ export interface ToolDefinition {
   handler: (session: DatabaseSession, args: any) => Promise<unknown>;
 }
 
-/**
- * Normalizes table name search (handles schema.table or just table)
- */
+// Normalizes table name search across schemas.
 function findTable(schema: any, tableName: string) {
   if (!tableName || typeof tableName !== 'string') return undefined;
   const normalized = tableName.toLowerCase().replace(/["`]/g, '');
@@ -40,7 +37,6 @@ function findTable(schema: any, tableName: string) {
 }
 
 export const AGENT_TOOLS: Record<string, ToolDefinition> = {
-  // 1. inspect_database_schema
   inspect_database_schema: {
     name: 'inspect_database_schema',
     description:
@@ -80,7 +76,6 @@ export const AGENT_TOOLS: Record<string, ToolDefinition> = {
     },
   },
 
-  // 2. inspect_table_details
   inspect_table_details: {
     name: 'inspect_table_details',
     description: 'Retrieves full structural details, columns, data types, constraints, and indexes for a single specific table.',
@@ -121,7 +116,6 @@ export const AGENT_TOOLS: Record<string, ToolDefinition> = {
     },
   },
 
-  // 3. inspect_table_relationships
   inspect_table_relationships: {
     name: 'inspect_table_relationships',
     description: 'Returns all incoming and outgoing foreign key relationships connected to a specified table.',
@@ -174,7 +168,6 @@ export const AGENT_TOOLS: Record<string, ToolDefinition> = {
     },
   },
 
-  // 4. inspect_database_health
   inspect_database_health: {
     name: 'inspect_database_health',
     description:
@@ -213,7 +206,6 @@ export const AGENT_TOOLS: Record<string, ToolDefinition> = {
     },
   },
 
-  // 5. inspect_table_indexes
   inspect_table_indexes: {
     name: 'inspect_table_indexes',
     description:
@@ -265,7 +257,6 @@ export const AGENT_TOOLS: Record<string, ToolDefinition> = {
     },
   },
 
-  // 6. inspect_database_statistics
   inspect_database_statistics: {
     name: 'inspect_database_statistics',
     description:
@@ -299,7 +290,6 @@ export const AGENT_TOOLS: Record<string, ToolDefinition> = {
     },
   },
 
-  // 7. explain_sql_query
   explain_sql_query: {
     name: 'explain_sql_query',
     description:
@@ -328,7 +318,6 @@ export const AGENT_TOOLS: Record<string, ToolDefinition> = {
     },
   },
 
-  // 8. compare_query_plans
   compare_query_plans: {
     name: 'compare_query_plans',
     description: 'Compares execution plans for two alternative SQL queries to evaluate which has lower cost and fewer full scans.',
@@ -385,7 +374,6 @@ export const AGENT_TOOLS: Record<string, ToolDefinition> = {
     },
   },
 
-  // 9. analyze_normalization
   analyze_normalization: {
     name: 'analyze_normalization',
     description:
@@ -440,7 +428,6 @@ export const AGENT_TOOLS: Record<string, ToolDefinition> = {
     },
   },
 
-  // 10. analyze_schema_impact
   analyze_schema_impact: {
     name: 'analyze_schema_impact',
     description:
@@ -494,7 +481,6 @@ export const AGENT_TOOLS: Record<string, ToolDefinition> = {
     },
   },
 
-  // 11. suggest_indexes
   suggest_indexes: {
     name: 'suggest_indexes',
     description:
@@ -557,7 +543,6 @@ export const AGENT_TOOLS: Record<string, ToolDefinition> = {
     },
   },
 
-  // 12. generate_sql_improvement
   generate_sql_improvement: {
     name: 'generate_sql_improvement',
     description:
@@ -653,7 +638,6 @@ export const AGENT_TOOLS: Record<string, ToolDefinition> = {
     },
   },
 
-  // 13. validate_sql_improvement
   validate_sql_improvement: {
     name: 'validate_sql_improvement',
     description:
@@ -743,7 +727,6 @@ export const AGENT_TOOLS: Record<string, ToolDefinition> = {
     },
   },
 
-  // 14. locate_schema_object
   locate_schema_object: {
     name: 'locate_schema_object',
     description:

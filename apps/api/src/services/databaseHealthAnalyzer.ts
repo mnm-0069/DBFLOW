@@ -1,5 +1,4 @@
-// apps/api/src/services/databaseHealthAnalyzer.ts
-// Deterministic database health analyzer and recommendation engine for DBFlow
+// Database health analyzer and recommendation engine.
 
 import type {
   DatabaseHealthReport,
@@ -28,10 +27,7 @@ export interface TableStatInfo {
   idxScans: number;
 }
 
-/**
- * Extracts column names from PostgreSQL index definition SQL
- * e.g. "CREATE UNIQUE INDEX idx_name ON public.tbl USING btree (col1, col2)" -> ["col1", "col2"]
- */
+// Extracts column names from PostgreSQL index definition SQL.
 export function parsePgIndexColumns(indexdef: string): string[] {
   const match = indexdef.match(/\((.+)\)$/);
   if (!match || !match[1]) return [];
@@ -41,9 +37,7 @@ export function parsePgIndexColumns(indexdef: string): string[] {
     .filter(Boolean);
 }
 
-/**
- * Retrieves all indexes for PostgreSQL or MySQL
- */
+// Retrieves all indexes for PostgreSQL or MySQL.
 export async function fetchDatabaseIndexes(session: DatabaseSession): Promise<RawIndexInfo[]> {
   const indexes: RawIndexInfo[] = [];
 
@@ -115,9 +109,7 @@ export async function fetchDatabaseIndexes(session: DatabaseSession): Promise<Ra
   return indexes;
 }
 
-/**
- * Retrieves table statistics (seq scans, live tuples)
- */
+// Retrieves table statistics (sequential scans, live tuples).
 export async function fetchTableStatistics(session: DatabaseSession): Promise<TableStatInfo[]> {
   const stats: TableStatInfo[] = [];
 
@@ -184,9 +176,7 @@ export async function fetchTableStatistics(session: DatabaseSession): Promise<Ta
   return stats;
 }
 
-/**
- * Checks if a column is covered as the leading column in any index of the table
- */
+// Checks if a column is covered as the leading column in any table index.
 export function hasIndexOnColumn(tableIndexes: RawIndexInfo[], columnName?: string): boolean {
   if (!columnName || typeof columnName !== 'string') return false;
   const target = columnName.toLowerCase();
@@ -195,9 +185,7 @@ export function hasIndexOnColumn(tableIndexes: RawIndexInfo[], columnName?: stri
   );
 }
 
-/**
- * Analyzes schema and statistics to generate deterministic findings
- */
+// Analyzes schema and statistics to generate deterministic findings.
 export async function analyzeDatabaseHealth(session: DatabaseSession): Promise<DatabaseHealthReport> {
   const schema = await introspectDatabaseSchema(session);
   const indexes = await fetchDatabaseIndexes(session);
@@ -451,9 +439,7 @@ export async function analyzeDatabaseHealth(session: DatabaseSession): Promise<D
   };
 }
 
-/**
- * Calculates a deterministic health score out of 100 with clear deduction rules
- */
+// Calculates a deterministic health score out of 100 with deduction limits.
 export function calculateHealthScore(findings: HealthFinding[]): HealthScoreBreakdown {
   const baseScore = 100;
   const deductions: HealthScoreBreakdown['deductions'] = [];

@@ -1,6 +1,4 @@
-// apps/web/src/app/DatabaseCopilot.tsx
-// DBFlow Copilot master workspace integrating Health Audit, AI Chat, Recommendations & SQL Intelligence
-// Premium redesign combining Linear polish and ChatGPT conversational simplicity
+// Master Copilot tab container hosting chat, health audit, and SQL intelligence.
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -49,7 +47,6 @@ export function DatabaseCopilot({
   const [aiConfigured, setAiConfigured] = useState(false);
   const [reviewedIds, setReviewedIds] = useState<Set<string>>(new Set());
 
-  // Check AI Provider configuration status
   useEffect(() => {
     fetch('http://localhost:4000/api/copilot/status')
       .then((res) => res.json())
@@ -59,7 +56,6 @@ export function DatabaseCopilot({
       .catch(() => setAiConfigured(false));
   }, []);
 
-  // Run Health Audit
   const fetchHealthAudit = async () => {
     if (!connectionId) {
       onNotify('Connect a live database session to run a health audit.');
@@ -89,7 +85,7 @@ export function DatabaseCopilot({
     }
   };
 
-  // Run initial audit automatically if connected and report is null
+  // Auto-run initial audit if connected and report is missing.
   useEffect(() => {
     if (connectionId && !report && !loading) {
       void fetchHealthAudit();

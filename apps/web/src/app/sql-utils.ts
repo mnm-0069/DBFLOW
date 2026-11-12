@@ -1,6 +1,4 @@
-/**
- * SQL formatting and export utilities for DBFlow
- */
+// SQL formatting and CSV export utilities.
 
 const MAJOR_KEYWORDS = [
   'SELECT',
@@ -26,28 +24,23 @@ const MAJOR_KEYWORDS = [
   'DELETE FROM'
 ];
 
-/**
- * Cleanly formats a SQL query by aligning major clauses and adding standard indentation
- */
+// Formats SQL by capitalizing major clauses and indenting expressions.
 export function formatSql(rawSql: string): string {
   if (!rawSql || !rawSql.trim()) return rawSql;
 
   let text = rawSql.trim().replace(/\s+/g, ' ');
 
-  // Standardize keyword case for major SQL keywords
   for (const kw of MAJOR_KEYWORDS) {
     const regex = new RegExp(`\\b${kw.replace(' ', '\\s+')}\\b`, 'gi');
     text = text.replace(regex, kw);
   }
 
-  // Insert line breaks before major keywords
   for (const kw of MAJOR_KEYWORDS) {
     if (kw === 'SELECT') continue;
     const regex = new RegExp(`\\s+(${kw})\\b`, 'g');
     text = text.replace(regex, '\n$1');
   }
 
-  // Handle commas in SELECT clause for multi-line readability
   const lines = text.split('\n');
   const formattedLines: string[] = [];
 
@@ -69,9 +62,7 @@ export function formatSql(rawSql: string): string {
   return formattedLines.join('\n');
 }
 
-/**
- * Exports tabular results to a downloadable CSV file
- */
+// Exports tabular results to a downloadable CSV file.
 export function exportToCsv(
   columns: string[],
   rows: Array<Record<string, unknown>>,
